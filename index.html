@@ -2181,7 +2181,7 @@
        8. HERRAMIENTAS EXCEL (SHEETJS CDN INTEGRATION)
        ========================================================================== */
 
-    function exportProductsToExcel() {
+        function exportProductsToExcel() {
       if (typeof XLSX === 'undefined') {
         showToast('Librería SheetJS no cargada.', 'error');
         return;
@@ -2189,6 +2189,7 @@
 
       const data = AppState.products.map(p => ({
         "Código": p.code,
+        "Marca": p.brand || p.marca || 'Sin Marca', // <-- 1. NUEVA COLUMNA EN EXPORTACIÓN
         "Descripción": p.description,
         "Categoría": p.category,
         "Tipo Unidad": p.unitType,
@@ -2225,6 +2226,7 @@
           let count = 0;
           json.forEach(row => {
             const code = String(row["Código"] || row["Codigo"] || row["code"] || '').trim();
+            const brand = String(row["Marca"] || row["marca"] || row["brand"] || 'Sin Marca').trim(); // <-- 2. LEER MARCA DESDE EL EXCEL
             const description = String(row["Descripción"] || row["Descripcion"] || row["description"] || '').trim();
             const category = String(row["Categoría"] || row["Categoria"] || row["category"] || 'Abarrotes').trim();
             const unitType = String(row["Tipo Unidad"] || row["unitType"] || 'unidad').toLowerCase().includes('kg') ? 'kg' : 'unidad';
@@ -2235,9 +2237,11 @@
             if (code && description) {
               const existingIdx = AppState.products.findIndex(p => p.code === code);
               if (existingIdx >= 0) {
-                AppState.products[existingIdx] = { code, description, category, unitType, price, stock, image };
+                // 3. ACTUALIZAR MARCA EN PRODUCTO EXISTENTE
+                AppState.products[existingIdx] = { code, brand, description, category, unitType, price, stock, image };
               } else {
-                AppState.products.push({ code, description, category, unitType, price, stock, image });
+                // 4. GUARDAR MARCA EN PRODUCTO NUEVO
+                AppState.products.push({ code, brand, description, category, unitType, price, stock, image });
               }
               count++;
             }
@@ -2459,6 +2463,25 @@
         }, 500);
       }
     });
+    function vaciarCatalogoProductosAdmin() {
+      if (!confirm("⚠️ ATENCIÓN: Está a punto de BORRAR COMPLETAMENTE todos los productos del catálogo de la base de datos.\n\n¿Desea continuar?")) {
+        return;
+      }
+      if (!confirm("🚨 CONFIRMACIÓN FINAL: Esta acción dejará el TPV sin artículos y no se puede deshacer. ¿Está absolutamente seguro?")) {
+        return;
+      }
+
+      AppState.products = [];
+      
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      if (typeof renderCatalog === 'function') renderCatalog();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderInventoryUI === 'function') renderInventoryUI();
+
+      alert("Catálogo de productos vaciado por completo con éxito.");
+    }
 
   </script>
 </body>
