@@ -1868,8 +1868,11 @@
       else alert(`Venta #${folio} definitiva eliminada con éxito.`);
     }
 
-    function renderShiftSummaryUI() {
-      const todayTotal = AppState.salesHistory.reduce((acc, s) => acc + s.total, 0);
+        function renderShiftSummaryUI() {
+      // 1. Validar si el historial existe y calcular el total de hoy (añadiendo , 0 al final para evitar montos pegados)
+      const historial = AppState.salesHistory || [];
+      const todayTotal = historial.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+      
       const totalTextElement = document.getElementById('todayTotalRevenueText');
       if (totalTextElement) {
         totalTextElement.textContent = `$${Math.round(todayTotal).toLocaleString('es-CL')}`;
@@ -1878,16 +1881,21 @@
       const breakdownContainer = document.getElementById('shiftPaymentBreakdownContainer');
       if (!breakdownContainer) return;
 
+      // 2. Inicializar absolutamente todos los métodos de pago registrados en $0 de forma obligatoria
       const breakdown = {};
-      AppState.paymentMethods.forEach(pm => breakdown[pm] = 0);
-      AppState.salesHistory.forEach(s => {
+      const metodosPago = AppState.paymentMethods || ['Efectivo', 'Tarjeta Débito', 'Tarjeta Crédito', 'Transferencia', 'Crédito'];
+      metodosPago.forEach(pm => breakdown[pm] = 0);
+      
+      // 3. Sumar solo si hay ventas reales en la lista
+      historial.forEach(s => {
         if (breakdown[s.paymentMethod] !== undefined) {
-          breakdown[s.paymentMethod] += s.total;
+          breakdown[s.paymentMethod] += (parseFloat(s.total) || 0);
         } else {
-          breakdown[s.paymentMethod] = s.total;
+          breakdown[s.paymentMethod] = (parseFloat(s.total) || 0);
         }
       });
 
+      // 4. Dibujar las tarjetas de dinero actualizadas en tiempo real
       breakdownContainer.innerHTML = Object.keys(breakdown).map(pm => `
         <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between">
           <span class="text-xs text-slate-400 font-medium">${pm}</span>
@@ -1895,6 +1903,7 @@
         </div>
       `).join('');
     }
+
 
 
     /* ==========================================================================
@@ -2507,6 +2516,35 @@
       if (typeof renderInventoryUI === 'function') renderInventoryUI();
 
       alert("Catálogo de productos vaciado por completo con éxito.");
+    }
+    function cerrarCajaAhoraAdmin() {
+      const historial = AppState.salesHistory || [];
+      if (historial.length === 0) {
+        alert("No hay ventas registradas en la jornada actual para generar un cierre de caja.");
+        return;
+      }
+
+      const todayTotal = historial.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+      
+      if (!confirm(`¿Está seguro de que desea realizar el CIERRE DE CAJA JORNADA?\n\nTotal Recaudado Hoy: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nEsto archivará el turno actual y limpiará el historial para la próxima jornada.`)) {
+        return;
+      }
+
+      // OPCIONAL: Si deseas descargar un Excel automático con el reporte antes de borrar, descomenta la siguiente línea:
+      // if (typeof exportProductsToExcel === 'function') exportProductsToExcel(); 
+
+      // 1. Limpiar el historial de ventas activas del día
+      AppState.salesHistory = [];
+
+      // 2. Guardar el estado en blanco en la memoria de la computadora (LocalStorage)
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      // 3. Forzar el refresco de todo el panel visual a $0 inmediatamente
+      if (typeof renderSalesHistory === 'function') renderSalesHistory();
+      renderShiftSummaryUI();
+
+      alert("🎉 ¡Cierre de caja finalizado con éxito! El turno ha sido bloqueado y archivado. Los marcadores se reiniciaron a $0.");
     }
 
   </script>
