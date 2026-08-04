@@ -377,9 +377,16 @@
             <h3 class="font-bold text-white text-base">Gestión de Catálogo e Inventario</h3>
             <p class="text-xs text-slate-400">Agrega, actualiza precios, modifica stock o elimina productos.</p>
           </div>
-          <button onclick="openProductModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
-            <i class="fa-solid fa-plus"></i> Nuevo Producto
-          </button>
+          
+          <!-- CONTENEDOR EN LÍNEA PARA LOS DOS BOTONES DEL ADMINISTRADOR -->
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="vaciarCatalogoProductosAdmin()" class="px-4 py-2 bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-800/60 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 no-print">
+              <i class="fa-solid fa-folder-minus"></i> Vaciar Catálogo Completo
+            </button>
+            <button onclick="openProductModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-plus"></i> Nuevo Producto
+            </button>
+          </div>
         </div>
 
         <!-- FILTRO DE BUSQUEDA ADMIN -->
@@ -2468,6 +2475,25 @@
         return;
       }
       if (!confirm("🚨 CONFIRMACIÓN FINAL: Esta acción dejará el TPV sin artículos y no se puede deshacer. ¿Está absolutamente seguro?")) {
+        return;
+      }
+
+      AppState.products = [];
+      
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      if (typeof renderCatalog === 'function') renderCatalog();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderInventoryUI === 'function') renderInventoryUI();
+
+      alert("Catálogo de productos vaciado por completo con éxito.");
+    }
+    function vaciarCatalogoProductosAdmin() {
+      if (!confirm("⚠️ ATENCIÓN: Está a punto de BORRAR COMPLETAMENTE todos los productos del catálogo de la base de datos.\n\n¿Desea continuar?")) {
+        return;
+      }
+      if (!confirm("🚨 CONFIRMACIÓN FINAL: Esta acción dejará el TPV vacío de artículos y no se puede deshacer. ¿Está absolutamente seguro?")) {
         return;
       }
 
