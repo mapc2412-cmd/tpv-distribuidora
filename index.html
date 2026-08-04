@@ -1,0 +1,2426 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema TPV - Punto de Venta Profesional</title>
+  
+  <!-- TailwindCSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- SheetJS CDN para Excel Import/Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    
+    /* Scrollbar personalizada */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Estilos para Impresión de Ticket Térmico */
+  @media print {
+    body * {
+      visibility: hidden !important;
+    }
+    #printableTicketContainer, #printableTicketContainer * {
+      visibility: visible !important;
+    }
+    #printableTicketContainer {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 80mm !important;
+      margin: 0 !important;
+      padding: 10px !important;
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-family: 'Courier New', Courier, monospace !important;
+      font-size: 11px !important;
+      line-height: 1.2 !important;
+      display: block !important; /* Fuerza a que no esté oculto */
+    }
+    .no-print {
+      display: none !important;
+    }
+    @page {
+      margin: 0 !important; /* Elimina encabezados de página del navegador (fecha, url) */
+    }
+  }
+</style>
+</head>
+<body class="h-full flex flex-col bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white overflow-x-hidden">
+
+  <!-- CONTENEDOR EXCLUSIVO PARA IMPRESIÓN (Añadido aquí para corregir ticket en blanco) -->
+  <div id="printableTicketContainer" class="hidden"></div>
+
+  <!-- NOTIFICACIONES TOAST -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- NAVEGACIÓN SUPERIOR / NAVBAR -->
+  <header class="no-print bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- LOGO Y TÍTULO -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white font-bold text-xl">
+          <i class="fa-solid fa-cash-register"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">PuntoVenta Pro</h1>
+          <p class="text-xs text-slate-400 flex items-center gap-1">
+            <span id="cashRegisterStatusBadge" class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span id="cashRegisterStatusText">Caja Abierta</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- MENÚ PRINCIPAL PESTAÑAS -->
+      <nav id="mainNav" class="hidden md:flex space-x-1 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
+        <button onclick="switchTab('pos')" id="tabBtn-pos" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 bg-emerald-600 text-white shadow-md">
+          <i class="fa-solid fa-shop"></i> TPV Ventas
+        </button>
+        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all duration-200 flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left"></i> Historial y Caja
+        </button>
+        <button onclick="switchTab('admin')" id="tabBtn-admin" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all duration-200 flex items-center gap-2">
+          <i class="fa-solid fa-sliders"></i> Administración
+        </button>
+      </nav>
+
+      <!-- BADGE USUARIO Y BOTÓN LOGOUT -->
+      <div class="flex items-center space-x-3">
+        <div id="userInfoBadge" class="hidden sm:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/50">
+          <div class="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xs font-bold" id="userAvatar">
+            A
+          </div>
+          <div class="text-left">
+            <div class="text-xs font-semibold text-white leading-none" id="userName">Administrador</div>
+            <div class="text-[10px] text-emerald-400 font-medium leading-tight capitalize" id="userRole">Rol: Admin</div>
+          </div>
+        </div>
+
+        <button onclick="logout()" class="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-red-400 bg-slate-800 hover:bg-slate-800/80 border border-slate-700/50 rounded-lg transition-colors flex items-center gap-1.5">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="hidden sm:inline">Salir</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL VISTAS -->
+  <main class="no-print flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+
+    <!-- VISTA 1: INTERFAZ TPV VENTAS -->
+    <section id="view-pos" class="tab-view flex flex-col lg:flex-row gap-6 items-start h-full">
+      
+      <!-- IZQUIERDA: CATÁLOGO Y BÚSQUEDA (60%) -->
+      <div class="w-full lg:w-3/5 flex flex-col gap-4">
+        
+        <!-- BUSCADOR Y LECTOR CÓDIGO BARRAS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row gap-3 items-center">
+          <div class="relative w-full">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fa-solid fa-barcode text-lg"></i>
+            </div>
+            <input type="text" id="posSearchInput" placeholder="Escanear código de barras o buscar por descripción (Presiona Enter)..." 
+              class="w-full pl-11 pr-10 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-white placeholder-slate-400 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+              onkeypress="handleSearchKeyPress(event)" oninput="filterCatalog()">
+            <button onclick="clearSearchInput()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white">
+              <i class="fa-solid fa-circle-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- CATEGORÍAS (PESTAÑAS DE FILTRO) -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none" id="categoryFilterContainer">
+          <!-- Dinámico JS -->
+        </div>
+
+        <!-- GRID DE PRODUCTOS -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto max-h-[calc(100vh-280px)] pr-1" id="productGrid">
+          <!-- Cargado por JS -->
+        </div>
+      </div>
+
+      <!-- DERECHA: CARRITO E INFORMACIÓN DE COMPRA (40%) -->
+      <div class="w-full lg:w-2/5 flex flex-col gap-4 sticky top-20">
+        
+        <!-- PANEL DE CARRITO -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[calc(100vh-160px)]">
+          
+          <!-- ENCABEZADO CARRITO -->
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-cart-shopping text-emerald-400 text-lg"></i>
+              <h2 class="font-bold text-white text-base">Carrito de Venta</h2>
+              <span id="cartBadgeCount" class="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30">0 ítems</span>
+            </div>
+            <button onclick="clearCartWithPrompt()" class="text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2.5 py-1 rounded-lg transition-colors border border-transparent hover:border-red-500/20 flex items-center gap-1">
+              <i class="fa-solid fa-trash-can"></i> Vaciar
+            </button>
+          </div>
+
+          <!-- TABLA DE ARTÍCULOS EN CARRITO -->
+          <div class="flex-1 overflow-y-auto py-2 my-1">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-800/60 pb-2">
+                  <th class="pb-2 pl-1">Art.</th>
+                  <th class="pb-2 text-right">Precio</th>
+                  <th class="pb-2 text-center w-20">Cant/Kg</th>
+                  <th class="pb-2 text-right pr-1">Subtotal</th>
+                  <th class="pb-2 w-6"></th>
+                </tr>
+              </thead>
+              <tbody id="cartTableBody" class="divide-y divide-slate-800/40 text-xs">
+                <!-- Filas renderizadas por JS -->
+              </tbody>
+            </table>
+            
+            <div id="cartEmptyState" class="flex flex-col items-center justify-center h-48 text-slate-500 gap-2">
+              <i class="fa-solid fa-basket-shopping text-4xl text-slate-700"></i>
+              <p class="text-xs">El carrito está vacío</p>
+            </div>
+          </div>
+
+          <!-- CLIENTE Y FORMA DE PAGO -->
+          <div class="pt-3 border-t border-slate-800 flex flex-col gap-3">
+            
+            <!-- ASIGNACIÓN DE CLIENTE -->
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1 flex justify-between">
+                <span>Cliente Asignado:</span>
+                <button onclick="switchTab('admin'); switchAdminTab('clients')" class="text-emerald-400 hover:underline text-[10px]">+ Nuevo Cliente</button>
+              </label>
+              <div class="relative">
+                <select id="cartClientSelect" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                  <option value="">-- Cliente Final (Venta General) --</option>
+                  <!-- Opciones cargadas por JS -->
+                </select>
+              </div>
+            </div>
+
+            <!-- MÉTODO DE PAGO -->
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1">Método de Pago:</label>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5" id="cartPaymentMethodsContainer">
+                <!-- Botones JS -->
+              </div>
+            </div>
+
+            <!-- RESUMEN MONETARIO -->
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex flex-col gap-1.5">
+              <div class="flex justify-between text-xs text-slate-400">
+                <span>Subtotal Neto:</span>
+                <span id="cartSubtotalText">$0</span>
+              </div>
+              <div class="flex justify-between text-xs text-slate-400">
+                <span>IVA (19%):</span>
+                <span id="cartTaxText">$0</span>
+              </div>
+              <div class="flex justify-between text-base font-extrabold text-white pt-1 border-t border-slate-800">
+                <span class="text-emerald-400">TOTAL:</span>
+                <span id="cartTotalText" class="text-emerald-400 text-lg">$0</span>
+              </div>
+            </div>
+
+            <!-- BOTÓN PRINCIPAL DE EMISIÓN TICKET -->
+            <button onclick="processCheckout()" id="btnProcessPayment" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-print"></i> COBRAR Y EMITIR TICKET
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- VISTA 2: HISTORIAL DE VENTAS Y CIERRE DE CAJA -->
+    <section id="view-history" class="tab-view hidden flex flex-col gap-6">
+      
+      <!-- CABECERA RESUMEN DE CAJA -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-vault text-emerald-400"></i> Resumen y Cierre de Caja Jornada
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Control de ventas del día, recaudación total por medio de pago y bloqueo de turno.</p>
+        </div>
+
+        <div class="flex flex-wrap gap-3 items-center">
+          <div class="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-right">
+            <div class="text-[10px] text-slate-400 uppercase font-semibold">Total Acumulado Hoy</div>
+            <div id="todayTotalRevenueText" class="text-xl font-extrabold text-emerald-400">$0</div>
+          </div>
+          
+          <button onclick="triggerCashClosure()" id="btnCloseShift" class="px-5 py-3 bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-red-600/20 transition-all flex items-center gap-2">
+            <i class="fa-solid fa-lock"></i> CERRAR CAJA AHORA
+          </button>
+          <button onclick="reopenShiftWithAdminPin()" id="btnReopenShift" class="hidden px-5 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center gap-2">
+            <i class="fa-solid fa-key"></i> REABRIR CAJA (ADMIN)
+          </button>
+        </div>
+      </div>
+
+      <!-- DESGLOSE POR MÉTODOS DE PAGO EN CAJA -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="shiftPaymentBreakdownContainer">
+        <!-- Renderizado dinámico -->
+      </div>
+
+      <!-- TABLA DE HISTORIAL DE VENTAS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h3 class="font-bold text-white text-base flex items-center gap-2">
+            <i class="fa-solid fa-receipt text-slate-400"></i> Historial Cronológico de Ventas
+          </h3>
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <input type="text" id="historySearchInput" oninput="renderSalesHistory()" placeholder="Filtrar por folio, cliente o cajero..." class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-full sm:w-64">
+            <button onclick="exportSalesToExcel()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1 transition-colors">
+              <i class="fa-solid fa-file-excel"></i> Exportar
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 font-semibold uppercase border-b border-slate-800">
+              <tr>
+                <th class="p-3">Folio Ticket</th>
+                <th class="p-3">Fecha y Hora</th>
+                <th class="p-3">Cliente</th>
+                <th class="p-3">Medio Pago</th>
+                <th class="p-3">Cajero</th>
+                <th class="p-3 text-right">Total ($)</th>
+                <th class="p-3 text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="salesHistoryTableBody" class="divide-y divide-slate-800/60">
+              <!-- Filas JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- VISTA 3: ADMINISTRACIÓN Y MANTENIMIENTO COMPLETO -->
+    <section id="view-admin" class="tab-view hidden flex flex-col gap-6">
+      
+      <!-- SUB-NAVEGACIÓN DE ADMINISTRACIÓN -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-wrap gap-2">
+        <button onclick="switchAdminTab('products')" id="adminTabBtn-products" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all bg-emerald-600 text-white">
+          <i class="fa-solid fa-boxes-stacked mr-1"></i> Artículos / Inventario
+        </button>
+        <button onclick="switchAdminTab('clients')" id="adminTabBtn-clients" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+          <i class="fa-solid fa-users mr-1"></i> Clientes
+        </button>
+        <button onclick="switchAdminTab('payments')" id="adminTabBtn-payments" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+          <i class="fa-solid fa-credit-card mr-1"></i> Métodos de Pago
+        </button>
+        <button onclick="switchAdminTab('ticket')" id="adminTabBtn-ticket" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+          <i class="fa-solid fa-file-invoice mr-1"></i> Configuración Ticket
+        </button>
+        <button onclick="switchAdminTab('excel')" id="adminTabBtn-excel" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+          <i class="fa-solid fa-file-excel mr-1"></i> Herramientas Excel
+        </button>
+      </div>
+
+      <!-- PESTAÑA ADMIN 1: PRODUCTOS -->
+      <div id="adminSec-products" class="admin-sec bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="font-bold text-white text-base">Gestión de Catálogo e Inventario</h3>
+            <p class="text-xs text-slate-400">Agrega, actualiza precios, modifica stock o elimina productos.</p>
+          </div>
+          <button onclick="openProductModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-plus"></i> Nuevo Producto
+          </button>
+        </div>
+
+        <!-- FILTRO DE BUSQUEDA ADMIN -->
+        <input type="text" id="adminProductSearch" oninput="renderAdminProductsTable()" placeholder="Buscar producto en inventario..." class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 w-full sm:w-80">
+
+        <!-- TABLA PRODUCTOS -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 font-semibold uppercase border-b border-slate-800">
+              <tr>
+                <th class="p-3">Imagen</th>
+                <th class="p-3">Código</th>
+                <th class="p-3">Descripción</th>
+                <th class="p-3">Categoría</th>
+                <th class="p-3">Unidad</th>
+                <th class="p-3 text-right">Precio</th>
+                <th class="p-3 text-right">Stock</th>
+                <th class="p-3 text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="adminProductsTableBody" class="divide-y divide-slate-800/60">
+              <!-- Filas JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PESTAÑA ADMIN 2: CLIENTES -->
+      <div id="adminSec-clients" class="admin-sec hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="font-bold text-white text-base">Directorio de Clientes</h3>
+            <p class="text-xs text-slate-400">Registra clientes para facturación y vinculación de tickets.</p>
+          </div>
+          <button onclick="openClientModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-user-plus"></i> Nuevo Cliente
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 font-semibold uppercase border-b border-slate-800">
+              <tr>
+                <th class="p-3">RUT / RUC</th>
+                <th class="p-3">Nombre / Razón Social</th>
+                <th class="p-3">Dirección</th>
+                <th class="p-3">Teléfono</th>
+                <th class="p-3 text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="adminClientsTableBody" class="divide-y divide-slate-800/60">
+              <!-- Filas JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PESTAÑA ADMIN 3: MÉTODOS DE PAGO -->
+      <div id="adminSec-payments" class="admin-sec hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 max-w-2xl">
+        <div>
+          <h3 class="font-bold text-white text-base">Configuración de Métodos de Pago</h3>
+          <p class="text-xs text-slate-400">Añade o deshabilita formas de pago disponibles en el TPV.</p>
+        </div>
+
+        <div class="flex gap-2">
+          <input type="text" id="newPaymentMethodInput" placeholder="Nombre del nuevo método (ej. Gifcard, App de Pago)..." class="flex-1 bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          <button onclick="addPaymentMethod()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all">
+            + Agregar
+          </button>
+        </div>
+
+        <ul id="adminPaymentMethodsList" class="divide-y divide-slate-800/60 bg-slate-950 rounded-xl border border-slate-800/80 overflow-hidden">
+          <!-- Lista JS -->
+        </ul>
+      </div>
+
+      <!-- PESTAÑA ADMIN 4: CONFIGURACIÓN TICKET -->
+      <div id="adminSec-ticket" class="admin-sec hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 max-w-3xl">
+        <div>
+          <h3 class="font-bold text-white text-base">Personalización del Ticket Térmico de Caja</h3>
+          <p class="text-xs text-slate-400">Ajusta los datos del encabezado y activa/desactiva columnas visibles.</p>
+        </div>
+
+        <form id="ticketConfigForm" onsubmit="saveTicketConfig(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex flex-col gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">Nombre Fantasía / Empresa:</label>
+              <input type="text" id="cfgCompanyName" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">RUT / Identificación Fiscal:</label>
+              <input type="text" id="cfgCompanyRut" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">Dirección Comercial:</label>
+              <input type="text" id="cfgCompanyAddress" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">Teléfono / Contacto:</label>
+              <input type="text" id="cfgCompanyPhone" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">URL del Logo (Opcional):</label>
+              <input type="text" id="cfgCompanyLogo" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1 font-medium">Mensaje Pie de Ticket:</label>
+              <input type="text" id="cfgFooterNote" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <div class="md:col-span-2 bg-slate-950 p-4 rounded-xl border border-slate-800/80 flex flex-col gap-2 mt-2">
+            <span class="text-xs font-bold text-emerald-400 uppercase">Columnas Visibles en el Ticket:</span>
+            <div class="flex flex-wrap gap-4 text-xs text-slate-300">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="cfgShowBarcode" class="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500">
+                <span>Mostrar Código de Barras</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="cfgShowCategory" class="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500">
+                <span>Mostrar Categoría</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="cfgShowTax" class="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500">
+                <span>Desglosar IVA (19%)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="md:col-span-2 flex justify-end">
+            <button type="submit" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all">
+              Guardar Configuración
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- PESTAÑA ADMIN 5: HERRAMIENTAS EXCEL (SHEETJS) -->
+      <div id="adminSec-excel" class="admin-sec hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-6">
+        <div>
+          <h3 class="font-bold text-white text-base">Importación y Exportación Masiva en Excel</h3>
+          <p class="text-xs text-slate-400">Carga o descarga de forma rápida la base de datos de productos, clientes e historial.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- SECCIÓN PRODUCTOS EXCEL -->
+          <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4">
+            <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+              <i class="fa-solid fa-boxes-stacked"></i> Productos (Inventario)
+            </div>
+            
+            <div class="flex flex-col gap-2">
+              <label class="text-xs text-slate-400">Exportar catálogo actual a archivo `.xlsx`:</label>
+              <button onclick="exportProductsToExcel()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-arrow-down text-emerald-400"></i> Descargar Excel de Productos
+              </button>
+            </div>
+
+            <div class="border-t border-slate-800 pt-3 flex flex-col gap-2">
+              <label class="text-xs text-slate-400">Importar productos desde Excel/CSV:</label>
+              <input type="file" id="excelProductsFileInput" accept=".xlsx, .xls, .csv" class="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+              <button onclick="importProductsFromExcel()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 mt-1">
+                <i class="fa-solid fa-file-arrow-up"></i> Procesar E Importar Productos
+              </button>
+            </div>
+          </div>
+
+          <!-- SECCIÓN CLIENTES EXCEL -->
+          <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4">
+            <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+              <i class="fa-solid fa-users"></i> Clientes
+            </div>
+            
+            <div class="flex flex-col gap-2">
+              <label class="text-xs text-slate-400">Exportar directorio de clientes a `.xlsx`:</label>
+              <button onclick="exportClientsToExcel()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-arrow-down text-emerald-400"></i> Descargar Excel de Clientes
+              </button>
+            </div>
+
+            <div class="border-t border-slate-800 pt-3 flex flex-col gap-2">
+              <label class="text-xs text-slate-400">Importar clientes desde Excel/CSV:</label>
+              <input type="file" id="excelClientsFileInput" accept=".xlsx, .xls, .csv" class="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+              <button onclick="importClientsFromExcel()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 mt-1">
+                <i class="fa-solid fa-file-arrow-up"></i> Procesar E Importar Clientes
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL DE AUTENTICACIÓN / LOGIN -->
+  <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-6">
+      
+      <div class="text-center flex flex-col items-center">
+        <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-xl shadow-emerald-500/20 text-white text-3xl mb-3">
+          <i class="fa-solid fa-cash-register"></i>
+        </div>
+        <h2 class="text-2xl font-black text-white">Acceso al Sistema TPV</h2>
+        <p class="text-xs text-slate-400 mt-1">Selecciona o ingresa tu usuario para iniciar jornada</p>
+      </div>
+
+      <form onsubmit="handleLoginSubmit(event)" class="flex flex-col gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Usuario:</label>
+          <input type="text" id="loginUsername" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500" placeholder="Ej: admin o cajero" required>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Contraseña:</label>
+          <input type="password" id="loginPassword" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500" placeholder="••••••••" required>
+        </div>
+
+        <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/30 transition-all mt-2">
+          Iniciar Sesión
+        </button>
+      </form>
+
+      <!-- BOTONES RÁPIDOS CREDENCIALES PRUEBA -->
+      <div class="border-t border-slate-800/80 pt-4 flex flex-col gap-2 text-center">
+        <span class="text-[11px] text-slate-400 font-semibold uppercase">Credenciales Demo Rápida:</span>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="fillLoginCredentials('admin', 'admin123')" class="py-2 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-emerald-400 font-medium transition-colors">
+            👑 Admin / admin123
+          </button>
+          <button onclick="fillLoginCredentials('cajero', 'cajero123')" class="py-2 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-teal-400 font-medium transition-colors">
+            👤 Cajero / cajero123
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL BLOQUEO DINÁMICO CLAVE ADMINISTRADOR (PIN INTERCEPTOR) -->
+  <div id="adminPinModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center gap-3 text-amber-400">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-lg">
+          <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-white text-sm">Autorización Administrador</h3>
+          <p class="text-[11px] text-slate-400">Ingresa la clave PIN requerida</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-slate-300" id="adminPinActionDescription">
+        Esta acción requiere aprobación de un administrador.
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1">PIN / Clave de Autorización (Default: 9999):</label>
+        <input type="password" id="adminPinInput" maxlength="10" placeholder="••••" class="w-full bg-slate-950 border border-amber-500/50 rounded-xl px-4 py-3 text-center text-xl font-bold tracking-widest text-white focus:outline-none focus:border-amber-400" onkeypress="if(event.key==='Enter') confirmAdminPin()">
+      </div>
+
+      <div class="flex gap-2">
+        <button onclick="closeAdminPinModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl">
+          Cancelar
+        </button>
+        <button onclick="confirmAdminPin()" class="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md">
+          Autorizar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE CONFIRMACIÓN DE PAGO -->
+  <div id="checkoutModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-white text-base flex items-center gap-2">
+          <i class="fa-solid fa-circle-check text-emerald-400"></i> ¿Confirmar Emisión de Ticket?
+        </h3>
+        <button onclick="closeCheckoutModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-2">
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>Cliente:</span>
+          <span id="modalCheckoutClient" class="text-white font-semibold">Cliente Final</span>
+        </div>
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>Método de Pago:</span>
+          <span id="modalCheckoutPayment" class="text-emerald-400 font-bold uppercase">Efectivo</span>
+        </div>
+        <div class="flex justify-between text-xs text-slate-400">
+          <span>Ítems:</span>
+          <span id="modalCheckoutItemsCount" class="text-white">0</span>
+        </div>
+        <div class="flex justify-between text-lg font-extrabold text-white pt-2 border-t border-slate-800">
+          <span>TOTAL COBRADO:</span>
+          <span id="modalCheckoutTotal" class="text-emerald-400">$0</span>
+        </div>
+      </div>
+
+      <!-- DESGLOSE EFECTIVO VUELTO -->
+      <div id="cashChangeSection" class="flex flex-col gap-2">
+        <div class="flex gap-2">
+          <div class="flex-1">
+            <label class="block text-[11px] text-slate-400 mb-1">Monto Entregado ($):</label>
+            <input type="number" id="modalCashReceivedInput" oninput="calculateCashChange()" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 font-bold">
+          </div>
+          <div class="flex-1">
+            <label class="block text-[11px] text-slate-400 mb-1">Vuelto / Cambio ($):</label>
+            <div id="modalCashChangeText" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-emerald-400 font-extrabold">
+              $0
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="closeCheckoutModal()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl">
+          Volver
+        </button>
+        <button onclick="executeFinalCheckout()" class="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30">
+          Confirmar E Imprimir
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL FORMULARIO PRODUCTO (CREAR / EDITAR) -->
+  <div id="productFormModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full mx-4 shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="productFormTitle" class="font-bold text-white text-base">Crear Nuevo Producto</h3>
+        <button onclick="closeProductModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <form id="productCrudForm" onsubmit="saveProductSubmit(event)" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input type="hidden" id="prodEditIndex" value="-1">
+        
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Código de Barras *:</label>
+          <input type="text" id="prodBarcode" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Categoría *:</label>
+          <select id="prodCategory" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            <option value="Encurtidos">Encurtidos</option>
+            <option value="Frutos Secos">Frutos Secos</option>
+            <option value="Abarrotes">Abarrotes</option>
+            <option value="Semillas">Semillas</option>
+            <option value="Condimentos">Condimentos</option>
+          </select>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs text-slate-400 mb-1">Descripción / Nombre del Producto *:</label>
+          <input type="text" id="prodDescription" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Tipo de Unidad *:</label>
+          <select id="prodUnitType" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+            <option value="unidad">Unidad (Enteros)</option>
+            <option value="kg">Kilos (Decimales)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Precio ($) *:</label>
+          <input type="number" id="prodPrice" step="1" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Stock Inicial *:</label>
+          <input type="number" id="prodStock" step="0.001" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">URL de Imagen:</label>
+          <input type="text" id="prodImage" placeholder="https://..." class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick="closeProductModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl">Cancelar</button>
+          <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md">Guardar Producto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL FORMULARIO CLIENTE (CREAR / EDITAR) -->
+  <div id="clientFormModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="clientFormTitle" class="font-bold text-white text-base">Crear Nuevo Cliente</h3>
+        <button onclick="closeClientModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <form id="clientCrudForm" onsubmit="saveClientSubmit(event)" class="flex flex-col gap-3">
+        <input type="hidden" id="cliEditIndex" value="-1">
+        
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">RUT / RUC / Identificación *:</label>
+          <input type="text" id="cliRut" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Nombre / Razón Social *:</label>
+          <input type="text" id="cliName" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Dirección:</label>
+          <input type="text" id="cliAddress" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Teléfono / Contacto:</label>
+          <input type="text" id="cliPhone" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick="closeClientModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl">Cancelar</button>
+          <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md">Guardar Cliente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONTAINER DE IMPRESIÓN DE TICKET TÉRMICO -->
+  <div id="printableTicketContainer" class="hidden">
+    <!-- Generado dinámicamente por JS -->
+  </div>
+
+
+  <!-- LÓGICA DE APLICACIÓN ES6 PURA -->
+  <script>
+    /* ==========================================================================
+       1. ESTADO GLOBAL Y DATOS SEMILLA (LOCALSTORAGE)
+       ========================================================================== */
+    
+    const SEED_PRODUCTS = [
+      { code: "101", description: "Aceitunas Verdes Encurtidas", category: "Encurtidos", unitType: "kg", price: 4500, stock: 25.5, image: "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=300&q=80" },
+      { code: "102", description: "Pepinillos Agridulces 500g", category: "Encurtidos", unitType: "unidad", price: 3200, stock: 40, image: "https://images.unsplash.com/photo-1589401704372-00081c70e28b?w=300&q=80" },
+      { code: "201", description: "Nueces Mariposa Premium", category: "Frutos Secos", unitType: "kg", price: 12000, stock: 15.0, image: "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=300&q=80" },
+      { code: "202", description: "Almendras Tostadas Sin Sal", category: "Frutos Secos", unitType: "kg", price: 14500, stock: 18.2, image: "https://images.unsplash.com/photo-1508061252966-177e02e3b2e7?w=300&q=80" },
+      { code: "203", description: "Maní Salado Crocante", category: "Frutos Secos", unitType: "kg", price: 3800, stock: 50.0, image: "https://images.unsplash.com/photo-1567892320421-1c657571ea48?w=300&q=80" },
+      { code: "301", description: "Aceite de Oliva Extra Virgen 1L", category: "Abarrotes", unitType: "unidad", price: 8900, stock: 30, image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=300&q=80" },
+      { code: "302", description: "Vinagre de Manzana Orgánico 500ml", category: "Abarrotes", unitType: "unidad", price: 2400, stock: 45, image: "https://images.unsplash.com/photo-1598511726623-d7999656c69e?w=300&q=80" },
+      { code: "401", description: "Chía Orgánica de Selección", category: "Semillas", unitType: "kg", price: 5500, stock: 22.0, image: "https://images.unsplash.com/photo-1509358271058-acd02cc93858?w=300&q=80" },
+      { code: "402", description: "Sésamo Blanco Pelado", category: "Semillas", unitType: "kg", price: 4200, stock: 30.0, image: "https://images.unsplash.com/photo-1514733670139-4d87a1941d55?w=300&q=80" },
+      { code: "501", description: "Orégano Entero Selección 100g", category: "Condimentos", unitType: "unidad", price: 1800, stock: 60, image: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=300&q=80" },
+      { code: "502", description: "Merkén Ahumado Artesanal 100g", category: "Condimentos", unitType: "unidad", price: 2500, stock: 50, image: "https://images.unsplash.com/photo-1599940824399-b87987ceb72a?w=300&q=80" }
+    ];
+
+    const SEED_CLIENTS = [
+      { rut: "11.111.111-1", name: "Juan Pérez (Cliente Frecuente)", address: "Av. Italia 450, Santiago", phone: "+56 9 1234 5678" },
+      { rut: "22.222.222-2", name: "Distribuidora Gourmet SpA", address: "Calle Comercio 890, Valparaíso", phone: "+56 9 9876 5432" },
+      { rut: "33.333.333-3", name: "María González", address: "Pasaje Los Olivos 12, Concepción", phone: "+56 9 5555 4444" }
+    ];
+
+    const SEED_PAYMENT_METHODS = ["Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Transferencia"];
+
+    const SEED_TICKET_CONFIG = {
+      companyName: "DISTRIBUIDORA DE ALIMENTOS & FRUTOS SECOS",
+      companyRut: "76.543.210-K",
+      companyAddress: "Av. Central 1234, Santiago - Chile",
+      companyPhone: "+56 2 2345 6789",
+      companyLogo: "",
+      showBarcode: true,
+      showCategory: true,
+      showTax: true,
+      footerNote: "¡Gracias por preferirnos! Conserve su comprobante."
+    };
+
+    const SEED_USERS = [
+      { username: "admin", password: "admin123", name: "Administrador General", role: "ADMIN", pin: "9999" },
+      { username: "cajero", password: "cajero123", name: "Cajero Turno", role: "CAJERO", pin: "" }
+    ];
+
+    // Estado global en memoria sincronizado con LocalStorage
+    let AppState = {
+      currentUser: null,
+      shiftStatus: "OPEN", // OPEN | CLOSED
+      products: [],
+      clients: [],
+      paymentMethods: [],
+      ticketConfig: {},
+      users: [],
+      cart: [], // { productCode, description, unitType, price, qty, subtotal }
+      selectedCategory: "Todos",
+      selectedPaymentMethod: "Efectivo",
+      salesHistory: [],
+      pendingAdminCallback: null // Callback cuando salta el modal de clave Admin PIN
+    };
+
+    // Inicializador de LocalStorage
+    function initLocalStorage() {
+      if (!localStorage.getItem('tpv_products')) localStorage.setItem('tpv_products', JSON.stringify(SEED_PRODUCTS));
+      if (!localStorage.getItem('tpv_clients')) localStorage.setItem('tpv_clients', JSON.stringify(SEED_CLIENTS));
+      if (!localStorage.getItem('tpv_payment_methods')) localStorage.setItem('tpv_payment_methods', JSON.stringify(SEED_PAYMENT_METHODS));
+      if (!localStorage.getItem('tpv_ticket_config')) localStorage.setItem('tpv_ticket_config', JSON.stringify(SEED_TICKET_CONFIG));
+      if (!localStorage.getItem('tpv_users')) localStorage.setItem('tpv_users', JSON.stringify(SEED_USERS));
+      if (!localStorage.getItem('tpv_sales_history')) localStorage.setItem('tpv_sales_history', JSON.stringify([]));
+      if (!localStorage.getItem('tpv_shift_status')) localStorage.setItem('tpv_shift_status', "OPEN");
+
+      AppState.products = JSON.parse(localStorage.getItem('tpv_products'));
+      AppState.clients = JSON.parse(localStorage.getItem('tpv_clients'));
+      AppState.paymentMethods = JSON.parse(localStorage.getItem('tpv_payment_methods'));
+      AppState.ticketConfig = JSON.parse(localStorage.getItem('tpv_ticket_config'));
+      AppState.users = JSON.parse(localStorage.getItem('tpv_users'));
+      AppState.salesHistory = JSON.parse(localStorage.getItem('tpv_sales_history'));
+      AppState.shiftStatus = localStorage.getItem('tpv_shift_status');
+    }
+
+    function saveStateToLocalStorage() {
+      localStorage.setItem('tpv_products', JSON.stringify(AppState.products));
+      localStorage.setItem('tpv_clients', JSON.stringify(AppState.clients));
+      localStorage.setItem('tpv_payment_methods', JSON.stringify(AppState.paymentMethods));
+      localStorage.setItem('tpv_ticket_config', JSON.stringify(AppState.ticketConfig));
+      localStorage.setItem('tpv_sales_history', JSON.stringify(AppState.salesHistory));
+      localStorage.setItem('tpv_shift_status', AppState.shiftStatus);
+    }
+
+    /* ==========================================================================
+       2. MÓDULO DE AUTENTICACIÓN, ROLES Y PIN INTERCEPTOR
+       ========================================================================== */
+
+    function checkSession() {
+      const savedUser = sessionStorage.getItem('tpv_current_user');
+      if (savedUser) {
+        AppState.currentUser = JSON.parse(savedUser);
+        document.getElementById('loginModal').classList.add('hidden');
+        updateUserBadgeUI();
+        renderShiftStatusUI();
+        renderAll();
+      } else {
+        document.getElementById('loginModal').classList.remove('hidden');
+      }
+    }
+
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const u = document.getElementById('loginUsername').value.trim().toLowerCase();
+      const p = document.getElementById('loginPassword').value.trim();
+
+      const found = AppState.users.find(user => user.username.toLowerCase() === u && user.password === p);
+
+      if (found) {
+        AppState.currentUser = found;
+        sessionStorage.setItem('tpv_current_user', JSON.stringify(found));
+        document.getElementById('loginModal').classList.add('hidden');
+        updateUserBadgeUI();
+        renderShiftStatusUI();
+        renderAll();
+        showToast(`Bienvenido ${found.name}`, 'success');
+      } else {
+        showToast('Credenciales inválidas. Verifica usuario y contraseña.', 'error');
+      }
+    }
+
+    function fillLoginCredentials(user, pass) {
+      document.getElementById('loginUsername').value = user;
+      document.getElementById('loginPassword').value = pass;
+    }
+
+    function logout() {
+      sessionStorage.removeItem('tpv_current_user');
+      AppState.currentUser = null;
+      document.getElementById('loginModal').classList.remove('hidden');
+      showToast('Sesión cerrada correctamente.', 'info');
+    }
+
+    function updateUserBadgeUI() {
+      if (!AppState.currentUser) return;
+      document.getElementById('userName').textContent = AppState.currentUser.name;
+      document.getElementById('userRole').textContent = `Rol: ${AppState.currentUser.role}`;
+      document.getElementById('userAvatar').textContent = AppState.currentUser.name.charAt(0).toUpperCase();
+    }
+
+    function renderShiftStatusUI() {
+      const badge = document.getElementById('cashRegisterStatusBadge');
+      const text = document.getElementById('cashRegisterStatusText');
+      const btnClose = document.getElementById('btnCloseShift');
+      const btnReopen = document.getElementById('btnReopenShift');
+
+      if (AppState.shiftStatus === 'OPEN') {
+        badge.className = "inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+        text.textContent = "Caja Abierta (Operativa)";
+        text.className = "text-xs text-emerald-400 font-medium";
+        if (btnClose) btnClose.classList.remove('hidden');
+        if (btnReopen) btnReopen.classList.add('hidden');
+      } else {
+        badge.className = "inline-block w-2 h-2 rounded-full bg-red-500";
+        text.textContent = "Caja Cerrada (Congelada)";
+        text.className = "text-xs text-red-400 font-medium font-bold";
+        if (btnClose) btnClose.classList.add('hidden');
+        if (btnReopen) btnReopen.classList.remove('hidden');
+      }
+    }
+
+    // INTERCEPTADOR DE SEGURIDAD CON CLAVE ADMIN
+    function requestAdminAuthorization(actionDesc, successCallback) {
+      if (AppState.currentUser && AppState.currentUser.role === 'ADMIN') {
+        // Si ya es administrador, procede directamente
+        successCallback();
+      } else {
+        // Si es Cajero, se congela y solicita PIN Admin
+        AppState.pendingAdminCallback = successCallback;
+        document.getElementById('adminPinActionDescription').textContent = actionDesc;
+        document.getElementById('adminPinInput').value = '';
+        document.getElementById('adminPinModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('adminPinInput').focus(), 100);
+      }
+    }
+
+    function confirmAdminPin() {
+      const inputPin = document.getElementById('adminPinInput').value.trim();
+      const adminUser = AppState.users.find(u => u.role === 'ADMIN');
+      const validPin = adminUser ? adminUser.pin : "9999";
+
+      if (inputPin === validPin || inputPin === "9999") {
+        document.getElementById('adminPinModal').classList.add('hidden');
+        showToast('Acción autorizada por Administrador', 'success');
+        if (AppState.pendingAdminCallback) {
+          const cb = AppState.pendingAdminCallback;
+          AppState.pendingAdminCallback = null;
+          cb();
+        }
+      } else {
+        showToast('PIN de Administrador incorrecto.', 'error');
+        document.getElementById('adminPinInput').focus();
+      }
+    }
+
+    function closeAdminPinModal() {
+      document.getElementById('adminPinModal').classList.add('hidden');
+      AppState.pendingAdminCallback = null;
+    }
+
+    /* ==========================================================================
+       3. TPV VENTAS: CATÁLOGO, BUSCADOR Y CARRITO INTELIGENTE
+       ========================================================================== */
+
+    function renderCategoryTabs() {
+      const container = document.getElementById('categoryFilterContainer');
+      const categories = ["Todos", "Encurtidos", "Frutos Secos", "Abarrotes", "Semillas", "Condimentos"];
+      
+      container.innerHTML = categories.map(cat => {
+        const active = AppState.selectedCategory === cat;
+        return `
+          <button onclick="selectCategory('${cat}')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            active 
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' 
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+          }">
+            ${cat}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectCategory(cat) {
+      AppState.selectedCategory = cat;
+      renderCategoryTabs();
+      renderCatalog();
+    }
+
+    function renderCatalog() {
+      const grid = document.getElementById('productGrid');
+      const searchVal = document.getElementById('posSearchInput').value.trim().toLowerCase();
+
+      const filtered = AppState.products.filter(p => {
+        const matchCat = (AppState.selectedCategory === 'Todos') || (p.category === AppState.selectedCategory);
+        const matchSearch = p.description.toLowerCase().includes(searchVal) || p.code.toLowerCase().includes(searchVal);
+        return matchCat && matchSearch;
+      });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
+            <i class="fa-solid fa-box-open text-4xl"></i>
+            <p class="text-xs">No se encontraron productos coincidentes</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(p => `
+        <div class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3 flex flex-col justify-between transition-all duration-200 hover:shadow-xl hover:shadow-emerald-900/10 group">
+          <div>
+            <div class="relative w-full h-24 rounded-xl overflow-hidden mb-2.5 bg-slate-950">
+              <img src="${p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'}" alt="${p.description}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onerror="this.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'">
+              <span class="absolute top-1.5 left-1.5 bg-slate-950/80 backdrop-blur text-[10px] text-slate-300 font-mono px-1.5 py-0.5 rounded border border-slate-700">
+                #${p.code}
+              </span>
+              <span class="absolute top-1.5 right-1.5 bg-emerald-500/20 backdrop-blur text-[10px] text-emerald-400 font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                ${p.unitType === 'kg' ? 'x Kg' : 'Unidad'}
+              </span>
+            </div>
+            
+            <div class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-0.5">${p.category}</div>
+            <h4 class="text-xs font-bold text-white leading-tight line-clamp-2 mb-1.5">${p.description}</h4>
+          </div>
+
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between mt-1">
+            <div>
+              <div class="text-sm font-black text-white">$${p.price.toLocaleString('es-CL')}</div>
+              <div class="text-[10px] ${p.stock > 5 ? 'text-slate-400' : 'text-amber-400 font-semibold'}">
+                Stock: ${p.unitType === 'kg' ? p.stock.toFixed(3) + ' kg' : Math.floor(p.stock) + ' un'}
+              </div>
+            </div>
+
+            <button onclick="addToCart('${p.code}')" class="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center text-xs shadow-md transition-colors">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function handleSearchKeyPress(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const query = e.target.value.trim().toLowerCase();
+        if (!query) return;
+
+        // Búsqueda por coincidencia exacta de código de barras o única coincidencia de texto
+        const exactMatch = AppState.products.find(p => p.code.toLowerCase() === query);
+        if (exactMatch) {
+          addToCart(exactMatch.code);
+          e.target.value = ''; // REGLA ESTRICTA: Vaciar al presionar Enter
+          filterCatalog();
+          return;
+        }
+
+        const partialMatches = AppState.products.filter(p => p.description.toLowerCase().includes(query));
+        if (partialMatches.length === 1) {
+          addToCart(partialMatches[0].code);
+          e.target.value = ''; // REGLA ESTRICTA: Vaciar al presionar Enter
+          filterCatalog();
+        } else if (partialMatches.length > 1) {
+          showToast(`Varias coincidencias (${partialMatches.length}). Selecciona de la lista.`, 'info');
+        } else {
+          showToast('No se encontró ningún producto con ese código.', 'error');
+        }
+      }
+    }
+
+    function clearSearchInput() {
+      const input = document.getElementById('posSearchInput');
+      input.value = '';
+      filterCatalog();
+      input.focus();
+    }
+
+    function filterCatalog() {
+      renderCatalog();
+    }
+
+    // OPERACIONES DEL CARRITO INTELIGENTE
+    function addToCart(code) {
+      const prod = AppState.products.find(p => p.code === code);
+      if (!prod) return;
+
+      if (prod.stock <= 0) {
+        showToast(`Stock insuficiente de ${prod.description}`, 'error');
+        return;
+      }
+
+      const existing = AppState.cart.find(item => item.productCode === code);
+
+      if (existing) {
+        const step = prod.unitType === 'kg' ? 0.5 : 1;
+        if (existing.qty + step > prod.stock) {
+          showToast(`Supera el stock disponible (${prod.stock})`, 'warning');
+          return;
+        }
+        existing.qty += step;
+        existing.subtotal = existing.qty * existing.price;
+      } else {
+        const initialQty = prod.unitType === 'kg' ? 1.0 : 1;
+        AppState.cart.push({
+          productCode: prod.code,
+          description: prod.description,
+          unitType: prod.unitType,
+          price: prod.price,
+          qty: initialQty,
+          subtotal: prod.price * initialQty
+        });
+      }
+
+      renderCartUI();
+      showToast(`+ ${prod.description} al carrito`, 'info');
+    }
+
+    function updateCartItemQty(index, newQtyStr) {
+      const item = AppState.cart[index];
+      if (!item) return;
+
+      const prod = AppState.products.find(p => p.code === item.productCode);
+      let val = parseFloat(newQtyStr);
+
+      if (isNaN(val) || val <= 0) val = item.unitType === 'kg' ? 0.1 : 1;
+
+      if (prod && val > prod.stock) {
+        showToast(`Stock máximo disponible: ${prod.stock}`, 'warning');
+        val = prod.stock;
+      }
+
+      const applyQtyUpdate = () => {
+        item.qty = val;
+        item.subtotal = item.qty * item.price;
+        renderCartUI();
+      };
+
+      // Si es cajero y cambia cantidad manualmente en la tabla, exige PIN Admin
+      if (AppState.currentUser && AppState.currentUser.role === 'CAJERO') {
+        requestAdminAuthorization(`Modificar cantidad de "${item.description}"`, applyQtyUpdate);
+      } else {
+        applyQtyUpdate();
+      }
+    }
+
+    function updateCartItemPrice(index, newPriceStr) {
+      const item = AppState.cart[index];
+      if (!item) return;
+
+      let val = parseFloat(newPriceStr);
+      if (isNaN(val) || val < 0) val = item.price;
+
+      const applyPriceUpdate = () => {
+        item.price = val;
+        item.subtotal = item.qty * item.price;
+        renderCartUI();
+        showToast(`Precio modificado a $${val.toLocaleString('es-CL')}`, 'info');
+      };
+
+      // Si es cajero e intenta modificar precio en el carrito, solicita PIN Admin
+      if (AppState.currentUser && AppState.currentUser.role === 'CAJERO') {
+        requestAdminAuthorization(`Cambiar precio unitario de "${item.description}"`, applyPriceUpdate);
+      } else {
+        applyPriceUpdate();
+      }
+    }
+
+    function removeCartItem(index) {
+      const item = AppState.cart[index];
+      if (!item) return;
+
+      const applyRemove = () => {
+        AppState.cart.splice(index, 1);
+        renderCartUI();
+        showToast('Producto removido del carrito', 'info');
+      };
+
+      if (AppState.currentUser && AppState.currentUser.role === 'CAJERO') {
+        requestAdminAuthorization(`Eliminar "${item.description}" del carrito`, applyRemove);
+      } else {
+        applyRemove();
+      }
+    }
+
+    function clearCartWithPrompt() {
+      if (AppState.cart.length === 0) return;
+
+      const applyClear = () => {
+        AppState.cart = [];
+        renderCartUI();
+        showToast('Carrito vaciado', 'info');
+      };
+
+      if (AppState.currentUser && AppState.currentUser.role === 'CAJERO') {
+        requestAdminAuthorization('Vaciar por completo el carrito de venta', applyClear);
+      } else {
+        applyClear();
+      }
+    }
+
+    function renderCartUI() {
+      const tbody = document.getElementById('cartTableBody');
+      const emptyState = document.getElementById('cartEmptyState');
+      const badgeCount = document.getElementById('cartBadgeCount');
+
+      badgeCount.textContent = `${AppState.cart.length} ítems`;
+
+      if (AppState.cart.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        document.getElementById('cartSubtotalText').textContent = '$0';
+        document.getElementById('cartTaxText').textContent = '$0';
+        document.getElementById('cartTotalText').textContent = '$0';
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+
+      tbody.innerHTML = AppState.cart.map((item, idx) => `
+        <tr class="hover:bg-slate-800/50 transition-colors">
+          <td class="py-2 pl-1 font-medium text-white leading-tight">
+            ${item.description}
+            <div class="text-[10px] text-slate-500 font-mono">#${item.productCode}</div>
+          </td>
+          
+          <td class="py-2 text-right">
+            <input type="number" step="1" value="${item.price}" onchange="updateCartItemPrice(${idx}, this.value)" 
+              class="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
+          </td>
+
+          <td class="py-2 text-center">
+            <input type="number" step="${item.unitType === 'kg' ? '0.05' : '1'}" value="${item.qty}" onchange="updateCartItemQty(${idx}, this.value)" 
+              class="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-xs text-white font-bold focus:outline-none focus:border-emerald-500">
+          </td>
+
+          <td class="py-2 text-right pr-1 font-bold text-white">
+            $${Math.round(item.subtotal).toLocaleString('es-CL')}
+          </td>
+
+          <td class="py-2 text-center">
+            <button onclick="removeCartItem(${idx})" class="text-slate-500 hover:text-red-400 text-xs px-1">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('');
+
+      // Cálculos monetarios
+      const grossTotal = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
+      const netSubtotal = grossTotal / 1.19;
+      const tax = grossTotal - netSubtotal;
+
+      document.getElementById('cartSubtotalText').textContent = `$${Math.round(netSubtotal).toLocaleString('es-CL')}`;
+      document.getElementById('cartTaxText').textContent = `$${Math.round(tax).toLocaleString('es-CL')}`;
+      document.getElementById('cartTotalText').textContent = `$${Math.round(grossTotal).toLocaleString('es-CL')}`;
+    }
+
+    function renderCartClientOptions() {
+      const select = document.getElementById('cartClientSelect');
+      const options = AppState.clients.map(c => `<option value="${c.rut}">${c.name} (${c.rut})</option>`).join('');
+      select.innerHTML = `<option value="">-- Cliente Final (Venta General) --</option>` + options;
+    }
+
+    function renderCartPaymentMethodsUI() {
+      const container = document.getElementById('cartPaymentMethodsContainer');
+      container.innerHTML = AppState.paymentMethods.map(pm => {
+        const active = AppState.selectedPaymentMethod === pm;
+        return `
+          <button onclick="selectPaymentMethod('${pm}')" class="py-2 px-2 rounded-xl text-xs font-semibold transition-all border text-center truncate ${
+            active 
+              ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400 shadow-sm' 
+              : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+          }">
+            ${pm}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectPaymentMethod(pm) {
+      AppState.selectedPaymentMethod = pm;
+      renderCartPaymentMethodsUI();
+    }
+
+    /* ==========================================================================
+       4. PROCESO DE FACTURACIÓN, COBRO Y REGLA POST-VENTA
+       ========================================================================== */
+
+    function processCheckout() {
+      if (AppState.cart.length === 0) {
+        showToast('Añade al menos un producto al carrito antes de cobrar.', 'warning');
+        return;
+      }
+
+      if (AppState.shiftStatus === 'CLOSED') {
+        showToast('La caja está cerrada. No se pueden procesar ventas.', 'error');
+        return;
+      }
+
+      const clientRut = document.getElementById('cartClientSelect').value;
+      const clientObj = AppState.clients.find(c => c.rut === clientRut);
+      const clientName = clientObj ? clientObj.name : "Cliente Final";
+
+      const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
+      const itemsCount = AppState.cart.reduce((acc, i) => acc + (i.unitType === 'kg' ? 1 : i.qty), 0);
+
+      document.getElementById('modalCheckoutClient').textContent = clientName;
+      document.getElementById('modalCheckoutPayment').textContent = AppState.selectedPaymentMethod;
+      document.getElementById('modalCheckoutItemsCount').textContent = itemsCount;
+      document.getElementById('modalCheckoutTotal').textContent = `$${Math.round(total).toLocaleString('es-CL')}`;
+
+      // Configuración sección efectivo
+      const cashSec = document.getElementById('cashChangeSection');
+      if (AppState.selectedPaymentMethod === 'Efectivo') {
+        cashSec.classList.remove('hidden');
+        document.getElementById('modalCashReceivedInput').value = Math.round(total);
+        calculateCashChange();
+      } else {
+        cashSec.classList.add('hidden');
+      }
+
+      document.getElementById('checkoutModal').classList.remove('hidden');
+    }
+
+    function calculateCashChange() {
+      const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
+      const rec = parseFloat(document.getElementById('modalCashReceivedInput').value) || 0;
+      const change = rec - total;
+      
+      const changeEl = document.getElementById('modalCashChangeText');
+      if (change >= 0) {
+        changeEl.textContent = `$${Math.round(change).toLocaleString('es-CL')}`;
+        changeEl.className = "w-full bg-slate-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-sm text-emerald-400 font-extrabold";
+      } else {
+        changeEl.textContent = "Monto insuficiente";
+        changeEl.className = "w-full bg-slate-950 border border-red-500/50 rounded-xl px-3 py-2 text-sm text-red-400 font-bold";
+      }
+    }
+
+    function closeCheckoutModal() {
+      document.getElementById('checkoutModal').classList.add('hidden');
+    }
+
+    function executeFinalCheckout() {
+      const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
+
+      if (AppState.selectedPaymentMethod === 'Efectivo') {
+        const rec = parseFloat(document.getElementById('modalCashReceivedInput').value) || 0;
+        if (rec < total) {
+          showToast('El monto entregado es menor al total a cobrar.', 'error');
+          return;
+        }
+      }
+
+      const clientRut = document.getElementById('cartClientSelect').value;
+      const clientObj = AppState.clients.find(c => c.rut === clientRut);
+
+      // Folio correlativo
+      const nextFolio = AppState.salesHistory.length + 1001;
+      const saleRecord = {
+        folio: `T-${nextFolio}`,
+        timestamp: new Date().toISOString(),
+        dateFormatted: new Date().toLocaleString('es-CL'),
+        cashier: AppState.currentUser ? AppState.currentUser.name : "Cajero General",
+        clientName: clientObj ? clientObj.name : "Cliente Final",
+        clientRut: clientObj ? clientObj.rut : "S/I",
+        paymentMethod: AppState.selectedPaymentMethod,
+        items: JSON.parse(JSON.stringify(AppState.cart)),
+        subtotal: total / 1.19,
+        tax: total - (total / 1.19),
+        total: total
+      };
+
+      // 1. Descontar Stock en Inventario
+      saleRecord.items.forEach(item => {
+        const prod = AppState.products.find(p => p.code === item.productCode);
+        if (prod) {
+          prod.stock = Math.max(0, prod.stock - item.qty);
+        }
+      });
+
+      // 2. Guardar en Historial de Ventas
+      AppState.salesHistory.unshift(saleRecord);
+      saveStateToLocalStorage();
+
+      // 3. Generar Ticket Térmico e Imprimir
+      generatePrintableTicket(saleRecord);
+      document.getElementById('checkoutModal').classList.add('hidden');
+      
+      window.print(); // Lanzar vista previa de impresión estándar de navegador
+
+      // 4. REGLA POST-VENTA ESTRICTA (CORREGIDA): Limpieza diferida para evitar ticket en blanco
+      setTimeout(() => {
+        AppState.cart = [];
+        document.getElementById('cartClientSelect').value = ""; // Limpiar a Cliente Final
+        renderCartUI();
+        renderCatalog();
+        showToast(`¡Venta #${saleRecord.folio} registrada exitosamente!`, 'success');
+      }, 800); // Retrasa la limpieza 800 milisegundos para dar tiempo a la cola de impresión
+    }
+
+    /* ==========================================================================
+       5. FORMATO E IMPRESIÓN DE TICKET TÉRMICO DE CAJA
+       ========================================================================== */
+
+    function generatePrintableTicket(sale) {
+      const container = document.getElementById('printableTicketContainer');
+      
+      // Intentar leer la configuración buscando variantes de nombres comunes
+      const cfg = AppState.ticketConfig || {};
+      const nombreEmpresa = cfg.businessName || cfg.nombreEmpresa || cfg.companyName || 'DISTRIBUIDORA';
+      const rutEmpresa = cfg.rut || cfg.rutEmpresa || cfg.ruc || 'N/A';
+      const direccionEmpresa = cfg.address || cfg.direccion || 'N/A';
+      const telefonoEmpresa = cfg.phone || cfg.telefono || 'N/A';
+      const urlLogo = cfg.logoUrl || cfg.logo || '';
+
+      // 1. Construir filas de los productos
+      const itemsRowsHtml = sale.items.map(item => `
+        <tr>
+          <td style="padding: 4px 0; border-bottom: 1px dashed #eee;">
+            ${item.description || item.nombre || 'Artículo'}
+            ${cfg.showBarcode || true ? `<br><small style="font-size:9px; color:#555;">[${item.productCode || item.codigo || ''}]</small>` : ''}
+          </td>
+          <td style="text-align: center; padding: 4px 0; border-bottom: 1px dashed #eee; white-space: nowrap;">
+            ${item.qty || item.cantidad} ${item.unitType === 'kg' ? 'kg' : 'u'}
+          </td>
+          <td style="text-align: right; padding: 4px 0; border-bottom: 1px dashed #eee;">
+            $${Math.round(item.subtotal).toLocaleString('es-CL')}
+          </td>
+        </tr>
+      `).join('');
+
+            // 2. Inyectar Encabezado con datos directos de Distribuidora Metropolitana
+      container.innerHTML = `
+        <div style="text-align: center; margin-top: 15px; margin-bottom: 15px; padding-top: 10px;">
+          ${urlLogo ? `<img src="${urlLogo}" style="max-width: 60px; max-height: 60px; margin: 0 auto 5px auto; display: block;" alt="Logo">` : ''}
+          <h2 style="font-size: 14px; font-weight: bold; margin: 0 0 5px 0; text-transform: uppercase; color: #000000; line-height: 1.4;">DISTRIBUIDORA METROPOLITANA</h2>
+          <p style="margin: 2px 0; font-size: 10px; color: #000000;">RUT: 13.821.727-2</p> 
+          <p style="margin: 2px 0; font-size: 10px; color: #000000;">DIR: Chillan 692, Local 1, Rahue Bajo, Osorno</p>
+          <p style="margin: 2px 0; font-size: 10px; color: #000000;">TEL: +56 9</p>
+          <p style="margin: 10px 0 5px 0; font-size: 10px; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 3px 0;">
+            <b>TICKET FOLIO: #${sale.folio}</b><br>
+            Fecha: ${new Date(sale.timestamp).toLocaleString('es-CL')}
+          </p>
+        </div>
+
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 15px; color: #000000;">
+          <thead>
+            <tr style="border-bottom: 1px solid #000;">
+              <th style="text-align: left; padding-bottom: 3px;">Articulo</th>
+              <th style="text-align: center; padding-bottom: 3px; width: 50px;">Cant.</th>
+              <th style="text-align: right; padding-bottom: 3px; width: 70px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRowsHtml}
+          </tbody>
+        </table>
+
+        <div style="font-size: 11px; border-top: 1px dashed #000; padding-top: 5px; color: #000000;">
+          <div style="display: flex; justify-content: space-between; margin: 2px 0;">
+            <span>Neto:</span>
+            <span>$${Math.round(sale.subtotal || (sale.total / 1.19)).toLocaleString('es-CL')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin: 2px 0;">
+            <span>IVA (19%):</span>
+            <span>$${Math.round(sale.tax || (sale.total - (sale.total / 1.19))).toLocaleString('es-CL')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin: 5px 0 2px 0; border-top: 1px solid #000; padding-top: 3px;">
+            <span>TOTAL:</span>
+            <span>$${Math.round(sale.total).toLocaleString('es-CL')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin: 5px 0 2px 0; border-top: 1px dashed #aaa; padding-top: 3px; font-size: 10px;">
+            <span>Pago (${sale.paymentMethod || 'Efectivo'}):</span>
+            <span>$${Math.round(sale.amountPaid || sale.total).toLocaleString('es-CL')}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">
+            <span>Vuelto:</span>
+            <span>$${Math.round(sale.change || 0).toLocaleString('es-CL')}</span>
+          </div>
+          <div style="margin-top: 10px; font-size: 10px;">
+            <b>Cliente:</b> ${sale.clientName || 'Cliente Final'}<br>
+            ${sale.clientRut ? `<b>RUT:</b> ${sale.clientRut}` : ''}
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #000; padding-top: 10px; color: #000000;">
+          ¡Gracias por su compra!
+        </div>
+      `;
+    }
+
+
+
+        /* ==========================================================================
+       6. HISTORIAL DE VENTAS Y CIERRE DE CAJA BLINDADO (CONSOLIDADO MAESTRO)
+       ========================================================================== */
+
+    function renderSalesHistory() {
+      const tbody = document.getElementById('salesHistoryTableBody');
+      if (!tbody) return; 
+
+      const searchInput = document.getElementById('historySearchInput');
+      const searchVal = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+      const filtered = (AppState.salesHistory || []).filter(s => 
+        s.folio.toLowerCase().includes(searchVal) ||
+        s.clientName.toLowerCase().includes(searchVal) ||
+        s.cashier.toLowerCase().includes(searchVal)
+      );
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500">No hay registros de ventas.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(s => `
+        <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60">
+          <td class="p-3 font-mono font-bold text-emerald-400">${s.folio}</td>
+          <td class="p-3 text-slate-400">${s.dateFormatted || new Date(s.timestamp).toLocaleString('es-CL')}</td>
+          <td class="p-3 font-medium text-white">${s.clientName}</td>
+          <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 border border-slate-700 text-slate-300">${s.paymentMethod}</span></td>
+          <td class="p-3 text-slate-400">${s.cashier}</td>
+          <td class="p-3 text-right font-extrabold text-white">$${Math.round(s.total).toLocaleString('es-CL')}</td>
+          <td class="p-3 text-center">
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="reprintTicket('${s.folio}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-lg text-[11px] font-medium flex items-center gap-1">
+                <i class="fa-solid fa-print"></i> Reimprimir
+              </button>
+              ${AppState.currentUser && AppState.currentUser.role === 'ADMIN' ? `
+                <button onclick="abrirModalModificarVenta('${s.folio}')" class="px-2.5 py-1 bg-blue-950/60 hover:bg-blue-900/80 text-blue-400 border border-blue-800/60 rounded-lg text-[11px] font-medium flex items-center gap-1">
+                  <i class="fa-solid fa-pen-to-square"></i> Modificar
+                </button>
+                <button onclick="eliminarVentaAdmin('${s.folio}')" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-400 border border-red-800/60 rounded-lg text-[11px] font-medium flex items-center gap-1">
+                  <i class="fa-solid fa-trash-can"></i> Eliminar
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      renderShiftSummaryUI();
+    }
+
+    function reprintTicket(folio) {
+      const venta = AppState.salesHistory.find(s => s.folio === folio);
+      if (!venta) {
+        alert("No se encontró el registro de la venta para reimprimir.");
+        return;
+      }
+      if (typeof generatePrintableTicket === 'function') {
+        generatePrintableTicket(venta);
+      }
+      window.print();
+    }
+
+    function abrirModalModificarVenta(folio) {
+      const venta = AppState.salesHistory.find(s => s.folio === folio);
+      if (!venta) {
+        alert("No se encontró la venta.");
+        return;
+      }
+
+      const listaClientes = AppState.clients || AppState.clientes || [];
+      let opcionesClientes = `<option value="Cliente Final" ${venta.clientName === 'Cliente Final' ? 'selected' : ''}>Cliente Final</option>`;
+      
+      opcionesClientes += listaClientes.map(c => {
+        const nombreCli = c.name || c.nombre || c.razonSocial || '';
+        const rutCli = c.rut || c.ruc || c.id || '';
+        const textoMostrar = rutCli ? `${nombreCli} (${rutCli})` : nombreCli;
+        const esSeleccionado = (venta.clientName === nombreCli || venta.clientRut === rutCli) ? 'selected' : '';
+        return `<option value="${nombreCli}" data-rut="${rutCli}" ${esSeleccionado}>${textoMostrar}</option>`;
+      }).join('');
+
+      const opcionesPago = AppState.paymentMethods.map(pm => 
+        `<option value="${pm}" ${venta.paymentMethod === pm ? 'selected' : ''}>${pm}</option>`
+      ).join('');
+
+      let itemsHtml = (venta.items || []).map((item, index) => {
+        return `
+          <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl space-y-2 item-edicion-fila" data-index="${index}" data-code="${item.productCode || item.codigo}">
+            <div class="text-xs font-bold text-emerald-400 truncate">${item.description || item.nombre}</div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-500 font-medium mb-0.5">Precio ($)</label>
+                <input type="number" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white input-edit-precio" 
+                       value="${Math.round(item.price)}" oninput="recalcularTotalesModalModificar()">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-500 font-medium mb-0.5">Cant / Kilos</label>
+                <input type="number" step="any" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white input-edit-qty" 
+                       value="${item.qty || item.cantidad}" oninput="recalcularTotalesModalModificar()">
+              </div>
+            </div>
+            <div class="text-right text-[11px] text-slate-400">
+              Subtotal: <span class="font-bold text-white span-edit-subtotal">$${Math.round(item.subtotal).toLocaleString('es-CL')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      let modalHtml = `
+        <div id="modalModificarVenta" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-lg shadow-2xl text-slate-100 flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4 flex-shrink-0">
+              <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-shield text-blue-400"></i> CONTROL TOTAL: Modificar Venta #${venta.folio}
+              </h3>
+              <button onclick="document.getElementById('modalModificarVenta').remove()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+            </div>
+            <div class="space-y-4 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs text-slate-400 font-medium mb-1">Seleccionar Cliente</label>
+                  <select id="editVentaClienteSelect" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                    ${opcionesClientes}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 font-medium mb-1">Medio de Pago</label>
+                  <select id="editVentaPago" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                    ${opcionesPago}
+                  </select>
+                </div>
+              </div>
+              <div class="border-t border-slate-800/60 pt-3">
+                <div class="text-xs text-slate-400 font-bold mb-2 flex items-center gap-1">
+                  <i class="fa-solid fa-boxes-stacked text-slate-500"></i> Artículos y Valores Cobrados:
+                </div>
+                <div class="space-y-2 max-h-[35vh] overflow-y-auto pr-1">
+                  ${itemsHtml}
+                </div>
+              </div>
+            </div>
+            <div class="border-t border-slate-800 pt-3 mt-4 flex-shrink-0 bg-slate-900">
+              <div class="flex justify-between items-center bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
+                <span class="text-xs text-slate-400 font-medium">NUEVO TOTAL VENTA:</span>
+                <span id="modalModificarTotalGrand" class="text-lg font-black text-emerald-400">$${Math.round(venta.total).toLocaleString('es-CL')}</span>
+              </div>
+              <div class="flex justify-end gap-2 mt-4">
+                <button onclick="document.getElementById('modalModificarVenta').remove()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium">
+                  Cancelar
+                </button>
+                <button onclick="guardarModificacionVentaAbsolutaConCliente('${venta.folio}')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-medium">
+                  Confirmar Corrección Completa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      recalcularTotalesModalModificar();
+    }
+
+    function recalcularTotalesModalModificar() {
+      let nuevoTotalGeneral = 0;
+      const filas = document.querySelectorAll('.item-edicion-fila');
+      
+      filas.forEach(fila => {
+        const precio = parseFloat(fila.querySelector('.input-edit-precio').value) || 0;
+        const qty = parseFloat(fila.querySelector('.input-edit-qty').value) || 0;
+        const subtotal = precio * qty;
+        nuevoTotalGeneral += subtotal;
+        
+        fila.querySelector('.span-edit-subtotal').textContent = `$${Math.round(subtotal).toLocaleString('es-CL')}`;
+      });
+      const totalElement = document.getElementById('modalModificarTotalGrand');
+      if (totalElement) {
+        totalElement.textContent = `$${Math.round(nuevoTotalGeneral).toLocaleString('es-CL')}`;
+      }
+    }
+
+    function guardarModificacionVentaAbsolutaConCliente(folio) {
+      const venta = AppState.salesHistory.find(s => s.folio === folio);
+      if (!venta) return;
+
+      if (!confirm("¿Confirmar la sobrescritura total de esta venta? El stock, el cliente asignado y los montos de caja se reajustarán automáticamente.")) {
+        return;
+      }
+
+      // 1. Devolver el stock original al inventario temporalmente para recalcular
+      if (venta.items && Array.isArray(venta.items)) {
+        venta.items.forEach(itemOld => {
+          const producto = AppState.products.find(p => p.productCode === itemOld.productCode || p.codigo === itemOld.productCode);
+          if (producto) {
+            producto.stock = parseFloat(producto.stock || 0) + parseFloat(itemOld.qty || 0);
+          }
+        });
+      }
+
+      // 2. Capturar el cliente seleccionado y su RUT desde el selector dinámico
+      const clienteSelect = document.getElementById('editVentaClienteSelect');
+      if (clienteSelect) {
+        const opcionSeleccionada = clienteSelect.options[clienteSelect.selectedIndex];
+        venta.clientName = clienteSelect.value;
+        venta.clientRut = opcionSeleccionada ? (opcionSeleccionada.getAttribute('data-rut') || '') : '';
+      }
+      
+      const pagoSelect = document.getElementById('editVentaPago');
+      if (pagoSelect) {
+        venta.paymentMethod = pagoSelect.value;
+      }
+
+      let nuevoTotalVenta = 0;
+      const filas = document.querySelectorAll('.item-edicion-fila');
+      
+      // 3. Actualizar los productos en el historial y aplicar el nuevo stock definitivo
+      filas.forEach(fila => {
+        const index = parseInt(fila.getAttribute('data-index'));
+        const prodCode = fila.getAttribute('data-code');
+        const nuevoPrecio = parseFloat(fila.querySelector('.input-edit-precio').value) || 0;
+        const nuevaQty = parseFloat(fila.querySelector('.input-edit-qty').value) || 0;
+        const nuevoSubtotal = nuevoPrecio * nuevaQty;
+
+        if (venta.items[index]) {
+          venta.items[index].price = nuevoPrecio;
+          venta.items[index].qty = nuevaQty;
+          venta.items[index].subtotal = nuevoSubtotal;
+        }
+
+        nuevoTotalVenta += nuevoSubtotal;
+
+        const producto = AppState.products.find(p => p.productCode === prodCode || p.codigo === prodCode);
+        if (producto) {
+          producto.stock = parseFloat(producto.stock || 0) - parseFloat(nuevaQty);
+        }
+      });
+
+      // Recalcular montos e impuesto legal (19% Chile) sobre el valor corregido
+      venta.total = nuevoTotalVenta;
+      venta.subtotal = nuevoTotalVenta / 1.19;
+      venta.tax = nuevoTotalVenta - venta.subtotal;
+
+      // 4. Guardar en LocalStorage de forma segura
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      // Cerrar ventana flotante de forma segura
+      const modal = document.getElementById('modalModificarVenta');
+      if (modal) modal.remove();
+
+      // 5. Refrescar interfaces de forma segura
+      renderSalesHistory();
+      try { if (typeof renderCatalog === 'function') renderCatalog(); } catch(e) {}
+      try { if (typeof renderCartUI === 'function') renderCartUI(); } catch(e) {}
+      try { if (typeof renderInventory === 'function') renderInventory(); } catch(e) {}
+      try { if (typeof renderInventoryUI === 'function') renderInventoryUI(); } catch(e) {}
+
+      if (typeof showToast === 'function') showToast(`Venta #${folio} actualizada con nuevo cliente y valores.`, "success");
+      else alert(`Venta #${folio} corregida con éxito.`);
+    }
+
+    function eliminarVentaAdmin(folio) {
+      if (!confirm(`¿Está seguro de que desea ELIMINAR permanentemente la venta #${folio}?\nEsto devolverá los productos al inventario y recalculará la caja.`)) {
+        return;
+      }
+
+      const ventaIndex = AppState.salesHistory.findIndex(s => s.folio === folio);
+      if (ventaIndex === -1) {
+        alert("No se encontró la venta especificada.");
+        return;
+      }
+
+      const venta = AppState.salesHistory[ventaIndex];
+
+      if (venta.items && Array.isArray(venta.items)) {
+        venta.items.forEach(item => {
+          const producto = AppState.products.find(p => p.productCode === item.productCode || p.codigo === item.productCode);
+          if (producto) {
+            producto.stock = parseFloat(producto.stock || 0) + parseFloat(item.qty || 0);
+          }
+        });
+      }
+
+      AppState.salesHistory.splice(ventaIndex, 1);
+
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      renderSalesHistory();
+      try { if (typeof renderCatalog === 'function') renderCatalog(); } catch(e) {}
+      try { if (typeof renderCartUI === 'function') renderCartUI(); } catch(e) {}
+      try { if (typeof renderInventory === 'function') renderInventory(); } catch(e) {}
+      try { if (typeof renderInventoryUI === 'function') renderInventoryUI(); } catch(e) {}
+
+      if (typeof showToast === 'function') showToast(`Venta #${folio} eliminada y stock revertido con éxito.`, "success");
+      else alert(`Venta #${folio} definitiva eliminada con éxito.`);
+    }
+
+    function renderShiftSummaryUI() {
+      const todayTotal = AppState.salesHistory.reduce((acc, s) => acc + s.total, 0);
+      const totalTextElement = document.getElementById('todayTotalRevenueText');
+      if (totalTextElement) {
+        totalTextElement.textContent = `$${Math.round(todayTotal).toLocaleString('es-CL')}`;
+      }
+
+      const breakdownContainer = document.getElementById('shiftPaymentBreakdownContainer');
+      if (!breakdownContainer) return;
+
+      const breakdown = {};
+      AppState.paymentMethods.forEach(pm => breakdown[pm] = 0);
+      AppState.salesHistory.forEach(s => {
+        if (breakdown[s.paymentMethod] !== undefined) {
+          breakdown[s.paymentMethod] += s.total;
+        } else {
+          breakdown[s.paymentMethod] = s.total;
+        }
+      });
+
+      breakdownContainer.innerHTML = Object.keys(breakdown).map(pm => `
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between">
+          <span class="text-xs text-slate-400 font-medium">${pm}</span>
+          <span class="text-lg font-bold text-white mt-1">$${Math.round(breakdown[pm]).toLocaleString('es-CL')}</span>
+        </div>
+      `).join('');
+    }
+
+
+    /* ==========================================================================
+       7. MANTENIMIENTO CRUD (PRODUCTOS, CLIENTES, MÉTODOS PAGO, TICKET)
+       ========================================================================== */
+
+    function switchAdminTab(secName) {
+      document.querySelectorAll('.admin-sec').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white');
+        btn.classList.add('text-slate-300');
+      });
+
+      const sec = document.getElementById(`adminSec-${secName}`);
+      const btn = document.getElementById(`adminTabBtn-${secName}`);
+
+      if (sec) sec.classList.remove('hidden');
+      if (btn) {
+        btn.classList.add('bg-emerald-600', 'text-white');
+        btn.classList.remove('text-slate-300');
+      }
+
+      if (secName === 'products') renderAdminProductsTable();
+      if (secName === 'clients') renderAdminClientsTable();
+      if (secName === 'payments') renderAdminPaymentMethodsList();
+      if (secName === 'ticket') fillTicketConfigForm();
+    }
+
+    // CRUD PRODUCTOS
+    function renderAdminProductsTable() {
+      const tbody = document.getElementById('adminProductsTableBody');
+      const searchVal = (document.getElementById('adminProductSearch')?.value || '').trim().toLowerCase();
+
+      const filtered = AppState.products.filter(p => 
+        p.code.toLowerCase().includes(searchVal) || p.description.toLowerCase().includes(searchVal)
+      );
+
+      tbody.innerHTML = filtered.map((p, idx) => `
+        <tr class="hover:bg-slate-800/40 transition-colors">
+          <td class="p-3">
+            <img src="${p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'}" class="w-8 h-8 rounded-lg object-cover bg-slate-950" onerror="this.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'">
+          </td>
+          <td class="p-3 font-mono font-bold text-white">${p.code}</td>
+          <td class="p-3 font-medium text-slate-200">${p.description}</td>
+          <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">${p.category}</span></td>
+          <td class="p-3 text-slate-400 capitalize">${p.unitType}</td>
+          <td class="p-3 text-right font-extrabold text-white">$${p.price.toLocaleString('es-CL')}</td>
+          <td class="p-3 text-right ${p.stock < 5 ? 'text-amber-400 font-bold' : 'text-slate-300'}">${p.unitType === 'kg' ? p.stock.toFixed(3) + ' kg' : p.stock + ' un'}</td>
+          <td class="p-3 text-center">
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="editProduct(${idx})" class="p-1.5 text-slate-400 hover:text-emerald-400"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="deleteProduct(${idx})" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openProductModal(index = -1) {
+      const modal = document.getElementById('productFormModal');
+      const form = document.getElementById('productCrudForm');
+      form.reset();
+
+      if (index >= 0) {
+        const prod = AppState.products[index];
+        document.getElementById('productFormTitle').textContent = "Editar Producto";
+        document.getElementById('prodEditIndex').value = index;
+        document.getElementById('prodBarcode').value = prod.code;
+        document.getElementById('prodBarcode').readOnly = true;
+        document.getElementById('prodCategory').value = prod.category;
+        document.getElementById('prodDescription').value = prod.description;
+        document.getElementById('prodUnitType').value = prod.unitType;
+        document.getElementById('prodPrice').value = prod.price;
+        document.getElementById('prodStock').value = prod.stock;
+        document.getElementById('prodImage').value = prod.image || '';
+      } else {
+        document.getElementById('productFormTitle').textContent = "Crear Nuevo Producto";
+        document.getElementById('prodEditIndex').value = -1;
+        document.getElementById('prodBarcode').readOnly = false;
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeProductModal() {
+      document.getElementById('productFormModal').classList.add('hidden');
+    }
+
+    function saveProductSubmit(e) {
+      e.preventDefault();
+      const idx = parseInt(document.getElementById('prodEditIndex').value);
+      const code = document.getElementById('prodBarcode').value.trim();
+      const category = document.getElementById('prodCategory').value;
+      const description = document.getElementById('prodDescription').value.trim();
+      const unitType = document.getElementById('prodUnitType').value;
+      const price = parseFloat(document.getElementById('prodPrice').value);
+      const stock = parseFloat(document.getElementById('prodStock').value);
+      const image = document.getElementById('prodImage').value.trim();
+
+      if (idx === -1) {
+        // Verificar duplicado de código
+        if (AppState.products.some(p => p.code === code)) {
+          showToast('El código de barras ya existe en el inventario.', 'error');
+          return;
+        }
+        AppState.products.push({ code, description, category, unitType, price, stock, image });
+        showToast('Producto creado con éxito', 'success');
+      } else {
+        AppState.products[idx] = { code, description, category, unitType, price, stock, image };
+        showToast('Producto actualizado con éxito', 'success');
+      }
+
+      saveStateToLocalStorage();
+      closeProductModal();
+      renderAdminProductsTable();
+      renderCatalog();
+    }
+
+    function editProduct(idx) {
+      openProductModal(idx);
+    }
+
+    function deleteProduct(idx) {
+      if (confirm(`¿Eliminar el producto "${AppState.products[idx].description}"?`)) {
+        AppState.products.splice(idx, 1);
+        saveStateToLocalStorage();
+        renderAdminProductsTable();
+        renderCatalog();
+        showToast('Producto eliminado', 'info');
+      }
+    }
+
+    // CRUD CLIENTES
+    function renderAdminClientsTable() {
+      const tbody = document.getElementById('adminClientsTableBody');
+      tbody.innerHTML = AppState.clients.map((c, idx) => `
+        <tr class="hover:bg-slate-800/40 transition-colors">
+          <td class="p-3 font-mono text-emerald-400 font-bold">${c.rut}</td>
+          <td class="p-3 font-medium text-white">${c.name}</td>
+          <td class="p-3 text-slate-400">${c.address || 'N/A'}</td>
+          <td class="p-3 text-slate-400">${c.phone || 'N/A'}</td>
+          <td class="p-3 text-center">
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="editClient(${idx})" class="p-1.5 text-slate-400 hover:text-emerald-400"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="deleteClient(${idx})" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openClientModal(index = -1) {
+      const modal = document.getElementById('clientFormModal');
+      const form = document.getElementById('clientCrudForm');
+      form.reset();
+
+      if (index >= 0) {
+        const cli = AppState.clients[index];
+        document.getElementById('clientFormTitle').textContent = "Editar Cliente";
+        document.getElementById('cliEditIndex').value = index;
+        document.getElementById('cliRut').value = cli.rut;
+        document.getElementById('cliName').value = cli.name;
+        document.getElementById('cliAddress').value = cli.address || '';
+        document.getElementById('cliPhone').value = cli.phone || '';
+      } else {
+        document.getElementById('clientFormTitle').textContent = "Crear Nuevo Cliente";
+        document.getElementById('cliEditIndex').value = -1;
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeClientModal() {
+      document.getElementById('clientFormModal').classList.add('hidden');
+    }
+
+    function saveClientSubmit(e) {
+      e.preventDefault();
+      const idx = parseInt(document.getElementById('cliEditIndex').value);
+      const rut = document.getElementById('cliRut').value.trim();
+      const name = document.getElementById('cliName').value.trim();
+      const address = document.getElementById('cliAddress').value.trim();
+      const phone = document.getElementById('cliPhone').value.trim();
+
+      if (idx === -1) {
+        AppState.clients.push({ rut, name, address, phone });
+        showToast('Cliente registrado con éxito', 'success');
+      } else {
+        AppState.clients[idx] = { rut, name, address, phone };
+        showToast('Cliente actualizado con éxito', 'success');
+      }
+
+      saveStateToLocalStorage();
+      closeClientModal();
+      renderAdminClientsTable();
+      renderCartClientOptions();
+    }
+
+    function editClient(idx) {
+      openClientModal(idx);
+    }
+
+    function deleteClient(idx) {
+      if (confirm(`¿Eliminar al cliente "${AppState.clients[idx].name}"?`)) {
+        AppState.clients.splice(idx, 1);
+        saveStateToLocalStorage();
+        renderAdminClientsTable();
+        renderCartClientOptions();
+        showToast('Cliente eliminado', 'info');
+      }
+    }
+
+    // GESTIÓN MÉTODOS PAGO
+    function renderAdminPaymentMethodsList() {
+      const ul = document.getElementById('adminPaymentMethodsList');
+      ul.innerHTML = AppState.paymentMethods.map((pm, idx) => `
+        <li class="p-3 flex items-center justify-between hover:bg-slate-900 transition-colors">
+          <span class="text-xs font-semibold text-white flex items-center gap-2">
+            <i class="fa-solid fa-credit-card text-emerald-400"></i> ${pm}
+          </span>
+          <button onclick="deletePaymentMethod(${idx})" class="text-slate-500 hover:text-red-400 text-xs">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </li>
+      `).join('');
+    }
+
+    function addPaymentMethod() {
+      const input = document.getElementById('newPaymentMethodInput');
+      const val = input.value.trim();
+      if (!val) return;
+
+      if (AppState.paymentMethods.includes(val)) {
+        showToast('Este método de pago ya existe.', 'warning');
+        return;
+      }
+
+      AppState.paymentMethods.push(val);
+      saveStateToLocalStorage();
+      input.value = '';
+      renderAdminPaymentMethodsList();
+      renderCartPaymentMethodsUI();
+      showToast('Método de pago agregado', 'success');
+    }
+
+    function deletePaymentMethod(idx) {
+      if (AppState.paymentMethods.length <= 1) {
+        showToast('Debe haber al menos un método de pago disponible.', 'error');
+        return;
+      }
+      AppState.paymentMethods.splice(idx, 1);
+      saveStateToLocalStorage();
+      renderAdminPaymentMethodsList();
+      renderCartPaymentMethodsUI();
+      showToast('Método de pago eliminado', 'info');
+    }
+
+    // CONFIGURACIÓN TICKET
+    function fillTicketConfigForm() {
+      const cfg = AppState.ticketConfig;
+      document.getElementById('cfgCompanyName').value = cfg.companyName || '';
+      document.getElementById('cfgCompanyRut').value = cfg.companyRut || '';
+      document.getElementById('cfgCompanyAddress').value = cfg.companyAddress || '';
+      document.getElementById('cfgCompanyPhone').value = cfg.companyPhone || '';
+      document.getElementById('cfgCompanyLogo').value = cfg.companyLogo || '';
+      document.getElementById('cfgFooterNote').value = cfg.footerNote || '';
+      document.getElementById('cfgShowBarcode').checked = cfg.showBarcode !== false;
+      document.getElementById('cfgShowCategory').checked = cfg.showCategory !== false;
+      document.getElementById('cfgShowTax').checked = cfg.showTax !== false;
+    }
+
+    function saveTicketConfig(e) {
+      e.preventDefault();
+      AppState.ticketConfig = {
+        companyName: document.getElementById('cfgCompanyName').value.trim(),
+        companyRut: document.getElementById('cfgCompanyRut').value.trim(),
+        companyAddress: document.getElementById('cfgCompanyAddress').value.trim(),
+        companyPhone: document.getElementById('cfgCompanyPhone').value.trim(),
+        companyLogo: document.getElementById('cfgCompanyLogo').value.trim(),
+        footerNote: document.getElementById('cfgFooterNote').value.trim(),
+        showBarcode: document.getElementById('cfgShowBarcode').checked,
+        showCategory: document.getElementById('cfgShowCategory').checked,
+        showTax: document.getElementById('cfgShowTax').checked
+      };
+
+      saveStateToLocalStorage();
+      showToast('Configuración del ticket actualizada', 'success');
+    }
+
+    /* ==========================================================================
+       8. HERRAMIENTAS EXCEL (SHEETJS CDN INTEGRATION)
+       ========================================================================== */
+
+    function exportProductsToExcel() {
+      if (typeof XLSX === 'undefined') {
+        showToast('Librería SheetJS no cargada.', 'error');
+        return;
+      }
+
+      const data = AppState.products.map(p => ({
+        "Código": p.code,
+        "Descripción": p.description,
+        "Categoría": p.category,
+        "Tipo Unidad": p.unitType,
+        "Precio ($)": p.price,
+        "Stock": p.stock,
+        "Imagen URL": p.image || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Productos");
+      XLSX.writeFile(workbook, `Inventario_Productos_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast('Excel de productos generado y descargado', 'success');
+    }
+
+    function importProductsFromExcel() {
+      const fileInput = document.getElementById('excelProductsFileInput');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        showToast('Selecciona un archivo Excel (.xlsx / .csv) primero.', 'warning');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet);
+
+          let count = 0;
+          json.forEach(row => {
+            const code = String(row["Código"] || row["Codigo"] || row["code"] || '').trim();
+            const description = String(row["Descripción"] || row["Descripcion"] || row["description"] || '').trim();
+            const category = String(row["Categoría"] || row["Categoria"] || row["category"] || 'Abarrotes').trim();
+            const unitType = String(row["Tipo Unidad"] || row["unitType"] || 'unidad').toLowerCase().includes('kg') ? 'kg' : 'unidad';
+            const price = parseFloat(row["Precio ($)"] || row["Precio"] || row["price"]) || 0;
+            const stock = parseFloat(row["Stock"] || row["stock"]) || 0;
+            const image = String(row["Imagen URL"] || row["image"] || '').trim();
+
+            if (code && description) {
+              const existingIdx = AppState.products.findIndex(p => p.code === code);
+              if (existingIdx >= 0) {
+                AppState.products[existingIdx] = { code, description, category, unitType, price, stock, image };
+              } else {
+                AppState.products.push({ code, description, category, unitType, price, stock, image });
+              }
+              count++;
+            }
+          });
+
+          saveStateToLocalStorage();
+          renderCatalog();
+          renderAdminProductsTable();
+          showToast(`¡Procesados ${count} productos correctamente!`, 'success');
+          fileInput.value = '';
+        } catch (err) {
+          console.error(err);
+          showToast('Error al leer el archivo Excel. Estructura no válida.', 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function exportClientsToExcel() {
+      if (typeof XLSX === 'undefined') return;
+
+      const data = AppState.clients.map(c => ({
+        "RUT/RUC": c.rut,
+        "Nombre / Razón Social": c.name,
+        "Dirección": c.address || '',
+        "Teléfono": c.phone || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
+      XLSX.writeFile(workbook, `Directorio_Clientes_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast('Excel de clientes generado', 'success');
+    }
+
+    function importClientsFromExcel() {
+      const fileInput = document.getElementById('excelClientsFileInput');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        showToast('Selecciona un archivo Excel primero.', 'warning');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+          let count = 0;
+          json.forEach(row => {
+            const rut = String(row["RUT/RUC"] || row["RUT"] || row["rut"] || '').trim();
+            const name = String(row["Nombre / Razón Social"] || row["Nombre"] || row["name"] || '').trim();
+            const address = String(row["Dirección"] || row["Direccion"] || row["address"] || '').trim();
+            const phone = String(row["Teléfono"] || row["Telefono"] || row["phone"] || '').trim();
+
+            if (rut && name) {
+              const existingIdx = AppState.clients.findIndex(c => c.rut === rut);
+              if (existingIdx >= 0) {
+                AppState.clients[existingIdx] = { rut, name, address, phone };
+              } else {
+                AppState.clients.push({ rut, name, address, phone });
+              }
+              count++;
+            }
+          });
+
+          saveStateToLocalStorage();
+          renderCartClientOptions();
+          renderAdminClientsTable();
+          showToast(`¡Procesados ${count} clientes correctamente!`, 'success');
+          fileInput.value = '';
+        } catch (err) {
+          console.error(err);
+          showToast('Error al importar clientes.', 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function exportSalesToExcel() {
+      if (typeof XLSX === 'undefined') return;
+
+      const data = AppState.salesHistory.map(s => ({
+        "Folio": s.folio,
+        "Fecha": s.dateFormatted,
+        "Cliente": s.clientName,
+        "RUT Cliente": s.clientRut,
+        "Medio Pago": s.paymentMethod,
+        "Cajero": s.cashier,
+        "Neto ($)": Math.round(s.subtotal),
+        "IVA ($)": Math.round(s.tax),
+        "Total ($)": Math.round(s.total)
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "HistorialVentas");
+      XLSX.writeFile(workbook, `Ventas_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast('Reporte de ventas descargado', 'success');
+    }
+
+    /* ==========================================================================
+       9. NAVEGACIÓN DE VISTAS Y TOASTS DE NOTIFICACIÓN
+       ========================================================================== */
+
+    function switchTab(tabName) {
+      // Bloqueo dinámico si el Cajero intenta ingresar a Administración
+      if (tabName === 'admin' && AppState.currentUser && AppState.currentUser.role === 'CAJERO') {
+        requestAdminAuthorization('Acceso al Panel de Administración y Configuración', () => {
+          doSwitchTab(tabName);
+        });
+        return;
+      }
+      doSwitchTab(tabName);
+    }
+
+    function doSwitchTab(tabName) {
+      document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
+        btn.classList.add('text-slate-300');
+      });
+
+      const targetView = document.getElementById(`view-${tabName}`);
+      const targetBtn = document.getElementById(`tabBtn-${tabName}`);
+
+      if (targetView) targetView.classList.remove('hidden');
+      if (targetBtn) {
+        targetBtn.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+        targetBtn.classList.remove('text-slate-300');
+      }
+
+      if (tabName === 'pos') renderCatalog();
+      if (tabName === 'history') renderSalesHistory();
+      if (tabName === 'admin') switchAdminTab('products');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+
+      const bgMap = {
+        success: 'bg-emerald-600 text-white border-emerald-400',
+        error: 'bg-red-600 text-white border-red-400',
+        warning: 'bg-amber-600 text-white border-amber-400',
+        info: 'bg-slate-800 text-slate-100 border-slate-700'
+      };
+
+      const iconMap = {
+        success: 'fa-circle-check',
+        error: 'fa-circle-exclamation',
+        warning: 'fa-triangle-exclamation',
+        info: 'fa-circle-info'
+      };
+
+      toast.className = `pointer-events-auto px-4 py-3 rounded-2xl border shadow-xl text-xs font-semibold flex items-center gap-2.5 transition-all duration-300 transform translate-y-2 opacity-0 ${bgMap[type] || bgMap.info}`;
+      toast.innerHTML = `<i class="fa-solid ${iconMap[type] || iconMap.info} text-sm"></i> <span>${message}</span>`;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function renderAll() {
+      renderCategoryTabs();
+      renderCatalog();
+      renderCartUI();
+      renderCartClientOptions();
+      renderCartPaymentMethodsUI();
+    }
+
+    // AL CARGAR LA PÁGINA
+    window.addEventListener('DOMContentLoaded', () => {
+      initLocalStorage();
+      checkSession();
+    });
+  </script>
+</body>
+</html>
