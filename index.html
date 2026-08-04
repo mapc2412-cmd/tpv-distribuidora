@@ -362,6 +362,11 @@
         <button onclick="switchAdminTab('payments')" id="adminTabBtn-payments" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
           <i class="fa-solid fa-credit-card mr-1"></i> Métodos de Pago
         </button>
+        <!-- NUEVO BOTÓN DE CATEGORÍAS INYECTADO -->
+        <button onclick="switchAdminTab('categories')" id="adminTabBtn-categories" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800 flex items-center gap-1">
+          <i class="fa-solid fa-tags"></i> Categorías
+        </button>
+
         <button onclick="switchAdminTab('ticket')" id="adminTabBtn-ticket" class="admin-tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
           <i class="fa-solid fa-file-invoice mr-1"></i> Configuración Ticket
         </button>
@@ -369,6 +374,33 @@
           <i class="fa-solid fa-file-excel mr-1"></i> Herramientas Excel
         </button>
       </div>
+        <!-- PESTAÑA ADMIN: GESTIÓN DE CATEGORÍAS -->
+        <div id="adminSec-categories" class="admin-sec bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 hidden">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 class="font-bold text-white text-base">Gestión de Categorías</h3>
+              <p class="text-xs text-slate-400">Agrega, edita o elimina las categorías oficiales de tu catálogo.</p>
+            </div>
+            <button type="button" onclick="abrirModalNuevaCategoria()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-plus"></i> Nueva Categoría
+            </button>
+          </div>
+
+          <div class="overflow-x-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left border-collapse text-xs text-slate-300">
+              <thead class="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
+                <tr>
+                  <th class="p-3">Nombre de la Categoría</th>
+                  <th class="p-3 text-center w-32">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="adminCategoriesTableBody">
+                <!-- Se rellena automáticamente con JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
 
       <!-- PESTAÑA ADMIN 1: PRODUCTOS -->
       <div id="adminSec-products" class="admin-sec bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
@@ -1910,7 +1942,7 @@
        7. MANTENIMIENTO CRUD (PRODUCTOS, CLIENTES, MÉTODOS PAGO, TICKET)
        ========================================================================== */
 
-    function switchAdminTab(secName) {
+        function switchAdminTab(secName) {
       document.querySelectorAll('.admin-sec').forEach(el => el.classList.add('hidden'));
       document.querySelectorAll('.admin-tab-btn').forEach(btn => {
         btn.classList.remove('bg-emerald-600', 'text-white');
@@ -1930,6 +1962,7 @@
       if (secName === 'clients') renderAdminClientsTable();
       if (secName === 'payments') renderAdminPaymentMethodsList();
       if (secName === 'ticket') fillTicketConfigForm();
+      if (secName === 'categories') renderAdminCategoriesTable(); // <-- ACTIVAR CATEGORÍAS EN PANTALLA
     }
 
     // CRUD PRODUCTOS
@@ -2611,6 +2644,105 @@
       } else {
         alert("❌ Clave incorrecta. Acceso denegado. Solo el Administrador puede reabrir la caja.");
       }
+    }
+    /* ==========================================================================
+       GESTIÓN DINÁMICA DE CATEGORÍAS (CONTROL ADMINISTRADOR)
+       ========================================================================== */
+
+    function renderAdminCategoriesTable() {
+      const tbody = document.getElementById('adminCategoriesTableBody');
+      if (!tbody) return;
+
+      // Inicializar el arreglo en la memoria del TPV si no existe
+      if (!AppState.categories || AppState.categories.length === 0) {
+        AppState.categories = ['Encurtidos', 'Frutos Secos', 'Abarrotes', 'Semillas', 'Condimentos'];
+      }
+
+      tbody.innerHTML = AppState.categories.map((cat, index) => `
+        <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60">
+          <td class="p-3 font-medium text-white text-sm">${cat}</td>
+          <td class="p-3 text-center">
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="editarCategoriaAdmin(${index})" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg border border-slate-700">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button onclick="eliminarCategoriaAdmin(${index})" class="p-1.5 bg-slate-800 hover:bg-red-950/60 text-red-400 rounded-lg border border-slate-700">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      // Sincronizar automáticamente los menús desplegables de los formularios del TPV
+      actualizarSelectoresCategoriasNativos();
+    }
+
+    function abrirModalNuevaCategoria() {
+      const nueva = prompt("Ingrese el nombre de la nueva categoría para el local:");
+      if (!nueva || nueva.trim() === "") return;
+      
+      const nombreLimpio = nueva.trim();
+      if (AppState.categories.includes(nombreLimpio)) {
+        alert("Esta categoría ya existe en el TPV.");
+        return;
+      }
+
+      AppState.categories.push(nombreLimpio);
+      guardarYRefrescarCategorias();
+    }
+
+    function editarCategoriaAdmin(index) {
+      const catAntigua = AppState.categories[index];
+      const nueva = prompt("Modificar nombre de la categoría:", catAntigua);
+      if (!nueva || nueva.trim() === "" || nueva.trim() === catAntigua) return;
+
+      const nombreNuevo = nueva.trim();
+
+      // CORRECCIÓN EN CASCADA: Actualizar la categoría en todos los productos asociados
+      if (AppState.products && Array.isArray(AppState.products)) {
+        AppState.products.forEach(p => {
+          if (p.category === catAntigua) p.category = nombreNuevo;
+        });
+      }
+
+      AppState.categories[index] = nombreNuevo;
+      guardarYRefrescarCategorias();
+    }
+
+    function eliminarCategoriaAdmin(index) {
+      const cat = AppState.categories[index];
+      
+      // Bloqueo de seguridad preventivo
+      const productosAsociados = (AppState.products || []).filter(p => p.category === cat).length;
+      if (productosAsociados > 0) {
+        alert(`No se puede eliminar "${cat}" porque actualmente hay ${productosAsociados} productos asociados en el inventario. Primero reasigna o elimina esos artículos.`);
+        return;
+      }
+
+      if (!confirm(`¿Está seguro de que desea eliminar permanentemente la categoría "${cat}"?`)) return;
+
+      AppState.categories.splice(index, 1);
+      guardarYRefrescarCategorias();
+    }
+
+    function actualizarSelectoresCategoriasNativos() {
+      const selectForm = document.getElementById('prodCategory');
+      if (selectForm) {
+        selectForm.innerHTML = AppState.categories.map(cat => 
+          `<option value="${cat}">${cat}</option>`
+        ).join('');
+      }
+    }
+
+    function guardarYRefrescarCategorias() {
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      renderAdminCategoriesTable();
+      if (typeof renderCatalog === 'function') renderCatalog();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderInventoryUI === 'function') renderInventoryUI();
     }
 
   </script>
