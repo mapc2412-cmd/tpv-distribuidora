@@ -2546,6 +2546,72 @@
 
       alert("🎉 ¡Cierre de caja finalizado con éxito! El turno ha sido bloqueado y archivado. Los marcadores se reiniciaron a $0.");
     }
+    /* ==========================================================================
+       SISTEMA DE CIERRE Y REAPERTURA DE CAJA (CONTROL ADMINISTRADOR)
+       ========================================================================== */
+
+    function triggerCashClosure() {
+      const historial = AppState.salesHistory || [];
+      
+      // 1. Si no hay ventas, avisamos de forma segura
+      if (historial.length === 0) {
+        alert("No hay ventas registradas en la jornada actual para generar un cierre de caja.");
+        return;
+      }
+
+      const todayTotal = historial.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+      
+      // 2. Confirmación del cierre
+      if (!confirm(`¿Está seguro de realizar el CIERRE DE CAJA JORNADA?\n\nTotal Recaudado Hoy: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nEsto bloqueará el turno actual.`)) {
+        return;
+      }
+
+      // 3. Ocultar botón de cerrar y mostrar botón de reabrir
+      const btnClose = document.getElementById('btnCloseShift');
+      const btnReopen = document.getElementById('btnReopenShift');
+      
+      if (btnClose) btnClose.classList.add('hidden');
+      if (btnReopen) btnReopen.classList.remove('hidden');
+
+      // 4. Cambiar el estado del TPV a caja cerrada en la memoria
+      AppState.cajaOperativa = false; 
+
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      else if (typeof saveState === 'function') saveState();
+
+      alert("🔒 Caja cerrada y turno bloqueado con éxito. Los marcadores se mantienen en el resumen hasta que el Administrador reinicie o reabra.");
+    }
+
+    function reopenShiftWithAdminPin() {
+      // 1. Seguridad: Solicitar el PIN del Administrador para reabrir (9999 o admin123)
+      const pinIngresado = prompt("SEGURIDAD TPV: Ingrese el PIN o Clave de Administrador para REABRIR la caja:");
+      if (!pinIngresado) return;
+
+      // Validamos contra las credenciales del sistema (puedes usar '9999' o tu clave habitual)
+      if (pinIngresado === '9999' || pinIngresado === 'admin123' || pinIngresado === 'admin') {
+        
+        // 2. Intercambiar los botones visuales de vuelta
+        const btnClose = document.getElementById('btnCloseShift');
+        const btnReopen = document.getElementById('btnReopenShift');
+        
+        if (btnClose) btnClose.classList.remove('hidden');
+        if (btnReopen) btnReopen.classList.add('hidden');
+
+        // 3. Devolver el estado del TPV a caja abierta
+        AppState.cajaOperativa = true;
+
+        if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+        else if (typeof saveState === 'function') saveState();
+
+        // 4. Refrescar los paneles
+        if (typeof renderSalesHistory === 'function') renderSalesHistory();
+        if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+
+        alert("🔓 ¡Caja REABIERTA con éxito! El turno vuelve a estar operativo para registrar ventas o correcciones.");
+      } else {
+        alert("❌ Clave incorrecta. Acceso denegado. Solo el Administrador puede reabrir la caja.");
+      }
+    }
 
   </script>
 </body>
