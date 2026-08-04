@@ -2479,32 +2479,60 @@
       initLocalStorage();
       checkSession();
     });
-    document.body.addEventListener('change', function(e) {
+        document.body.addEventListener('change', function(e) {
       if (e.target && e.target.id === 'productImageFileInput') {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (file.size > 500 * 1024) { 
-          alert("La imagen supera los 500KB. Por favor, elige una foto más liviana o comprimida para mantener veloz el TPV.");
-          e.target.value = '';
-          return;
-        }
-
         const reader = new FileReader();
         reader.onload = function(event) {
-          const inputOculto = document.getElementById('prodImage');
-          if (inputOculto) {
-            inputOculto.value = event.target.result;
-          }
-          if (typeof showToast === 'function') {
-            showToast("¡Imagen de PC cargada con éxito!", "success");
-          } else {
-            alert("¡Imagen de PC cargada con éxito!");
-          }
+          const img = new Image();
+          img.onload = function() {
+            // 1. Definir dimensiones máximas óptimas (Mantiene excelente nitidez en el catálogo)
+            const maxDim = 400;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > maxDim) {
+                height *= maxDim / width;
+                width = maxDim;
+              }
+            } else {
+              if (height > maxDim) {
+                width *= maxDim / height;
+                height = maxDim;
+              }
+            }
+
+            // 2. Dibujar la imagen en un lienzo Canvas invisible para procesarla en caliente
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // 3. Convertir a texto comprimiendo al 75% de peso (Evita saturar el LocalStorage)
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
+
+            // 4. Inyectar de forma invisible en la base de datos del formulario
+            const inputOculto = document.getElementById('prodImage');
+            if (inputOculto) {
+              inputOculto.value = compressedBase64;
+            }
+            
+            if (typeof showToast === 'function') {
+              showToast("¡Imagen optimizada y cargada con éxito!", "success");
+            } else {
+              alert("¡Imagen optimizada y cargada con éxito!");
+            }
+          };
+          img.src = event.target.result;
         };
         reader.readAsDataURL(file);
       }
     });
+
     // Limpiar el selector de archivos automáticamente cada vez que se guarde un producto
     document.body.addEventListener('submit', function(e) {
       if (e.target && e.target.id === 'productCrudForm') {
