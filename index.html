@@ -763,10 +763,13 @@
           <input type="number" id="prodStock" step="0.001" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500" required>
         </div>
 
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">URL de Imagen:</label>
-          <input type="text" id="prodImage" placeholder="https://..." class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                <div>
+          <label class="block text-xs text-slate-400 mb-1">Imagen desde PC:</label>
+          <input type="file" id="productImageFileInput" accept="image/*" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-1 text-[11px] text-white focus:outline-none file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+          <!-- El sistema seguirá guardando aquí de forma invisible la foto convertida a texto -->
+          <input type="hidden" id="prodImage" value="">
         </div>
+
 
         <div class="sm:col-span-2 flex justify-end gap-2 pt-2 border-t border-slate-800">
           <button type="button" onclick="closeProductModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl">Cancelar</button>
@@ -2421,6 +2424,42 @@
       initLocalStorage();
       checkSession();
     });
+    document.body.addEventListener('change', function(e) {
+      if (e.target && e.target.id === 'productImageFileInput') {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) { 
+          alert("La imagen supera los 500KB. Por favor, elige una foto más liviana o comprimida para mantener veloz el TPV.");
+          e.target.value = '';
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const inputOculto = document.getElementById('prodImage');
+          if (inputOculto) {
+            inputOculto.value = event.target.result;
+          }
+          if (typeof showToast === 'function') {
+            showToast("¡Imagen de PC cargada con éxito!", "success");
+          } else {
+            alert("¡Imagen de PC cargada con éxito!");
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    // Limpiar el selector de archivos automáticamente cada vez que se guarde un producto
+    document.body.addEventListener('submit', function(e) {
+      if (e.target && e.target.id === 'productCrudForm') {
+        setTimeout(() => {
+          const fileInput = document.getElementById('productImageFileInput');
+          if (fileInput) fileInput.value = '';
+        }, 500);
+      }
+    });
+
   </script>
 </body>
 </html>
