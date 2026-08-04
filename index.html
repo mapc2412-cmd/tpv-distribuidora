@@ -2284,7 +2284,9 @@
             const image = String(row["Imagen URL"] || row["image"] || '').trim();
 
             if (code && description) {
-              const existingIdx = AppState.products.findIndex(p => p.code === code);
+              const existingIdx = AppState.products.findIndex(p => 
+  String(p.code).trim().toLowerCase() === String(code).trim().toLowerCase()
+);
               if (existingIdx >= 0) {
                 // 3. ACTUALIZAR MARCA EN PRODUCTO EXISTENTE
                 AppState.products[existingIdx] = { code, brand, description, category, unitType, price, stock, image };
@@ -2683,7 +2685,10 @@
       if (!nueva || nueva.trim() === "") return;
       
       const nombreLimpio = nueva.trim();
-      if (AppState.categories.includes(nombreLimpio)) {
+      const existeCategoria = AppState.categories.some(cat => 
+  cat.trim().toLowerCase() === nombreLimpio.toLowerCase()
+);
+if (existeCategoria) {
         alert("Esta categoría ya existe en el TPV.");
         return;
       }
@@ -2744,6 +2749,33 @@
       if (typeof renderInventory === 'function') renderInventory();
       if (typeof renderInventoryUI === 'function') renderInventoryUI();
     }
+    // MOTOR INTELIGENTE ANTI-MAYÚSCULAS PARA CATEGORÍAS (CASO EXCEL Y CRUDS)
+    setInterval(() => {
+      // 1. Unificar categorías en el catálogo para que la búsqueda ignore mayúsculas
+      if (AppState && AppState.products && Array.isArray(AppState.products)) {
+        AppState.products.forEach(p => {
+          if (p.category) {
+            // Convierte la primera letra en mayúscula y el resto en minúscula de forma estándar (Ej: "encurtidos" -> "Encurtidos")
+            const cat = p.category.trim();
+            p.category = cat.charAt(0).toUpperCase() + cat.slice(1).toLowerCase();
+          }
+        });
+      }
+      // 2. Unificar el listado maestro de categorías para evitar duplicados en los botones
+      if (AppState && AppState.categories && Array.isArray(AppState.categories)) {
+        const unicas = [];
+        AppState.categories.forEach(c => {
+          const formateada = c.trim().charAt(0).toUpperCase() + c.trim().slice(1).toLowerCase();
+          if (!unicas.includes(formateada) && formateada !== "") {
+            unicas.push(formateada);
+          }
+        });
+        if (AppState.categories.length !== unicas.length) {
+          AppState.categories = unicas;
+          if (typeof renderAdminCategoriesTable === 'function') renderAdminCategoriesTable();
+        }
+      }
+    }, 2000); // Se ejecuta en segundo plano cada 2 segundos automáticamente
 
   </script>
 </body>
