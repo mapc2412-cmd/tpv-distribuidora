@@ -2663,7 +2663,7 @@
        SISTEMA DE CIERRE Y REAPERTURA DE CAJA (CONTROL ADMINISTRADOR)
        ========================================================================== */
 
-    function triggerCashClosure() {
+        function triggerCashClosure() {
       const historial = AppState.salesHistory || [];
       
       // 1. Si no hay ventas, avisamos de forma segura
@@ -2675,25 +2675,34 @@
       const todayTotal = historial.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
       
       // 2. Confirmación del cierre
-      if (!confirm(`¿Está seguro de realizar el CIERRE DE CAJA JORNADA?\n\nTotal Recaudado Hoy: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nEsto bloqueará el turno actual.`)) {
+      if (!confirm(`🚨 SEGURIDAD ADMINISTRADOR: ¿Está seguro de realizar el CIERRE DE CAJA JORNADA?\n\nTotal Recaudado Hoy: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nEsto bloqueará el turno de forma inmediata e impedirá emitir más boletas.`)) {
         return;
       }
 
-      // 3. Ocultar botón de cerrar y mostrar botón de reabrir
+      // 3. CAMBIO DE ESTADO EXTREMO EN EL DISCO DURO Y MEMORIA GLOBAL
+      AppState.shiftStatus = 'CLOSED';
+      localStorage.setItem('tpv_shift_status', 'CLOSED');
+
+      // Ocultar botón de cerrar y mostrar botón de reabrir nativos
       const btnClose = document.getElementById('btnCloseShift');
       const btnReopen = document.getElementById('btnReopenShift');
       
       if (btnClose) btnClose.classList.add('hidden');
       if (btnReopen) btnReopen.classList.remove('hidden');
 
-      // 4. Cambiar el estado del TPV a caja cerrada en la memoria
-      AppState.cajaOperativa = false; 
-
+      // Guardar el estado cerrado físicamente en el local storage
       if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
       else if (typeof saveState === 'function') saveState();
 
-      alert("🔒 Caja cerrada y turno bloqueado con éxito. Los marcadores se mantienen en el resumen hasta que el Administrador reinicie o reabra.");
+      // 4. Limpiar saldos colgados del carrito en caliente
+      if (AppState && AppState.cart) AppState.cart = [];
+      if (typeof renderCart === 'function') renderCart();
+      if (typeof updateCartUI === 'function') updateCartUI();
+      if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+
+      alert("🔒 Caja cerrada y turno bloqueado con éxito. Se ha activado el escudo perimetral de seguridad.");
     }
+
 
     function reopenShiftWithAdminPin() {
       // 1. Seguridad: Solicitar el PIN del Administrador para reabrir (9999 o admin123)
@@ -2995,7 +3004,99 @@ if (existeCategoria) {
         }
       }
     }, 1500);
+    // CORTAFUEGOS AUTOMÁTICO DE SEGURIDAD EXTREMA PARA CIERRE DE CAJA
+    setInterval(() => {
+      const estadoTurno = localStorage.getItem('tpv_shift_status') || AppState.shiftStatus || 'OPEN';
+      const cartelExiste = document.getElementById('tpv-lockout-overlay');
 
+      if (estadoTurno === 'CLOSED' || estadoTurno === 'CLOSED_SHIFT') {
+        
+        // 1. Limpiar el carrito de ventas de forma forzada para que no queden saldos colgados
+        if (AppState && AppState.cart) AppState.cart = [];
+        if (typeof renderCart === 'function') renderCart();
+        if (typeof updateCartUI === 'function') updateCartUI();
+
+        // 2. Inyectar el escudo visual premium bloqueando clics y teclado
+        if (!cartelExiste) {
+          const overlay = document.createElement('div');
+          overlay.id = 'tpv-lockout-overlay';
+          // Estilo premium oscuro que tapa el 100% de la pantalla del local
+          overlay.className = 'fixed inset-0 z-[99999] bg-slate-950/98 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 select-none';
+          overlay.innerHTML = `
+            <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md w-full shadow-2xl shadow-red-950/20 flex flex-col items-center gap-4">
+              <div class="w-16 h-16 bg-red-950/60 border border-red-800 text-red-500 rounded-2xl flex items-center justify-center animate-pulse">
+                <i class="fa-solid fa-lock text-2xl"></i>
+              </div>
+              <h2 class="text-xl font-black text-white tracking-tight">TERMINAL BLOQUEADO</h2>
+              <p class="text-xs text-slate-400 leading-relaxed">La jornada o turno de caja ha sido formalmente finalizado por el Administrador. No se permiten transacciones operativas en este PC.</p>
+              <div class="w-full border-t border-slate-800 my-2"></div>
+              <button onclick="reopenShiftWithAdminPin()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-key"></i> REABRIR TURNO (ADMIN)
+              </button>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+
+          // 3. BLOQUEO DE TECLADO Y MOUSE INTERNO COMERCIAL
+          window.tpvBloqueoTeclado = function(e) { e.preventDefault(); e.stopPropagation(); return false; };
+          window.addEventListener('keydown', window.tpvBloqueoTeclado, true);
+          window.addEventListener('keypress', window.tpvBloqueoTeclado, true);
+        }
+      } else {
+        // Si el estado es OPEN, liberamos los controles y removemos el cartel al instante
+        if (cartelExiste) {
+          cartelExiste.remove();
+          if (window.tpvBloqueoTeclado) {
+            window.removeEventListener('keydown', window.tpvBloqueoTeclado, true);
+            window.removeEventListener('keypress', window.tpvBloqueoTeclado, true);
+          }
+        }
+      }
+    }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
+
+    // CORTAFUEGOS AUTOMÁTICO DE SEGURIDAD EXTREMA PARA CIERRE DE CAJA
+    setInterval(() => {
+      const estadoTurno = localStorage.getItem('tpv_shift_status') || AppState.shiftStatus || 'OPEN';
+      const cartelExiste = document.getElementById('tpv-lockout-overlay');
+
+      if (estadoTurno === 'CLOSED') {
+        // Inyectar el escudo visual premium bloqueando clics y teclado
+        if (!cartelExiste) {
+          const overlay = document.createElement('div');
+          overlay.id = 'tpv-lockout-overlay';
+          // Estilo premium oscuro que tapa el 100% de la pantalla del local
+          overlay.className = 'fixed inset-0 z- bg-slate-950/98 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 select-none';
+          overlay.innerHTML = `
+            <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md w-full shadow-2xl shadow-red-950/20 flex flex-col items-center gap-4">
+              <div class="w-16 h-16 bg-red-950/60 border border-red-800 text-red-500 rounded-2xl flex items-center justify-center animate-pulse">
+                <i class="fa-solid fa-lock text-2xl"></i>
+              </div>
+              <h2 class="text-xl font-black text-white tracking-tight">TERMINAL BLOQUEADO</h2>
+              <p class="text-xs text-slate-400 leading-relaxed">La jornada o turno de caja ha sido formalmente finalizado por el Administrador. No se permiten transacciones operativas en este PC.</p>
+              <div class="w-full border-t border-slate-800 my-2"></div>
+              <button onclick="reopenShiftWithAdminPin()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-key"></i> REABRIR TURNO (ADMIN)
+              </button>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+
+          // BLOQUEO DE TECLADO INTERNO COMERCIAL EN LA PÁGINA
+          window.tpvBloqueoTeclado = function(e) { e.preventDefault(); e.stopPropagation(); return false; };
+          window.addEventListener('keydown', window.tpvBloqueoTeclado, true);
+          window.addEventListener('keypress', window.tpvBloqueoTeclado, true);
+        }
+      } else {
+        // Si el estado es OPEN, liberamos los controles y removemos el cartel al instante
+        if (cartelExiste) {
+          cartelExiste.remove();
+          if (window.tpvBloqueoTeclado) {
+            window.removeEventListener('keydown', window.tpvBloqueoTeclado, true);
+            window.removeEventListener('keypress', window.tpvBloqueoTeclado, true);
+          }
+        }
+      }
+    }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
 
   </script>
 </body>
