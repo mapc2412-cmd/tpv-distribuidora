@@ -324,11 +324,11 @@
         <!-- Renderizado dinámico -->
       </div>
 
-      <!-- TABLA DE HISTORIAL DE VENTAS -->
+      <!-- TABLA DE HISTORIAL DE VENTAS DEL CAJERO (VISUALIZACIÓN DIARIA NORMAL) -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <h3 class="font-bold text-white text-base flex items-center gap-2">
-            <i class="fa-solid fa-receipt text-slate-400"></i> Historial Cronológico de Ventas
+            <i class="fa-solid fa-receipt text-slate-400"></i> Historial Cronológico de Ventas (Turno Activo)
           </h3>
           <div class="flex items-center gap-2 w-full sm:w-auto">
             <input type="text" id="historySearchInput" oninput="renderSalesHistory()" placeholder="Filtrar por folio, cliente o cajero..." class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-full sm:w-64">
@@ -358,7 +358,39 @@
         </div>
       </div>
 
+      <!-- PESTAÑA ADMIN INYECTADA: ACUMULADO CONSOLIDADO POR DÍA (CON CANDADO ABSOLUTO POR ROL) -->
+      <div id="adminHistoricalClosingsSection" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 mt-2">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="font-bold text-white text-base flex items-center gap-2">
+              <i class="fa-solid fa-chart-line text-emerald-400"></i> Historial de Ventas Consolidadas por Día
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">Resumen individual de jornadas anteriores para auditoría y control de fin de mes.</p>
+          </div>
+          <!-- BOTÓN EXPORTAR EXCEL HISTÓRICO EXCLUSIVO PARA EL ADMINISTRADOR -->
+          <button onclick="exportarCierresHistoricosAExcel()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-file-excel"></i> Exportar Histórico Mensual
+          </button>
+        </div>
+
+        <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left border-collapse text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
+              <tr>
+                <th class="p-3">Fecha de la Jornada</th>
+                <th class="p-3 text-center">Tickets Emitidos</th>
+                <th class="p-3 text-right">Total Recaudado</th>
+              </tr>
+            </thead>
+            <tbody id="adminHistoricalClosingsTableBody">
+              <!-- Se rellena automáticamente en vivo con JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </section>
+
 
     <!-- VISTA 3: ADMINISTRACIÓN Y MANTENIMIENTO COMPLETO -->
     <section id="view-admin" class="tab-view hidden flex flex-col gap-6">
@@ -3206,6 +3238,136 @@ if (existeCategoria) {
         sug.classList.add('hidden');
       }
     });
+    /* ==========================================================================
+       SISTEMA DE SEGURIDAD OPERATIVA: HISTÓRICO EXCLUSIVO ADMIN Y RESET DIARIO
+       ========================================================================== */
+
+    // 1. CUSTODIO PERIMETRAL: Monitorea el rol del usuario conectado y gestiona el cambio de día
+    setInterval(() => {
+      if (!AppState) return;
+
+      // Detectar de forma segura el usuario logueado en el TPV
+      const usuarioLogueado = AppState.currentUser || JSON.parse(localStorage.getItem('tpv_current_user')) || { role: 'cajero' };
+      const seccionHistorico = document.getElementById('adminHistoricalClosingsSection');
+
+      if (seccionHistorico) {
+        // CANDADO DE SEGURIDAD POR ROL: Solo el Administrador ve el acumulado e interactúa con él
+        if (String(usuarioLogueado.role).toLowerCase() === 'admin') {
+          seccionHistorico.classList.remove('hidden');
+        } else {
+          seccionHistorico.classList.add('hidden'); // Para el cajero desaparece completamente del HTML
+        }
+      }
+
+      // 2. REINICIO INTELIGENTE INDIVIDUAL SI CAMBIÓ LA FECHA DEL SISTEMA (DÍA SIGUIENTE)
+      const reloj = new Date();
+      const fechaHoyFormato = reloj.getDate().toString().padStart(2, '0') + '-' + 
+                               (reloj.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                               reloj.getFullYear();
+      
+      const ultimaFechaActiva = localStorage.getItem('tpv_last_active_date') || fechaHoyFormato;
+
+      // Si el reloj detecta que avanzó el día, congelamos la caja vieja, la archivamos e iniciamos en $0
+      if (ultimaFechaActiva !== fechaHoyFormato) {
+        const historialEnCaja = AppState.salesHistory || [];
+        
+        if (historialEnCaja.length > 0) {
+          // Respaldo de seguridad automático de fondo para que no se pierda el dinero del día anterior
+          const totalVentaCajaVieja = historialEnCaja.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+          if (!AppState.dailyClosings) AppState.dailyClosings = [];
+          
+          AppState.dailyClosings.push({
+            fecha: ultimaFechaActiva,
+            totalVendido: Math.round(totalVentaCajaVieja),
+            cantidadTickets: historialEnCaja.length
+          });
+          
+          localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+        }
+
+        // RESET DE MARCADORES A $0 PARA LA JORNADA INDIVIDUAL DEL NUEVO DÍA
+        AppState.salesHistory = [];
+        localStorage.setItem('tpv_sales_history', JSON.stringify([]));
+        localStorage.setItem('tpv_shift_status', 'OPEN'); // Desbloqueamos el terminal limpio
+        localStorage.setItem('tpv_last_active_date', fechaHoyFormato);
+
+        if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+        if (typeof renderSalesHistory === 'function') renderSalesHistory();
+        if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
+      }
+    }, 2000); // Monitorea en vivo cada 2 segundos
+
+    // 2. RENDERIZADOR DE LA TABLA HISTÓRICA ACUMULATIVA DE FIN DE MES
+    function renderHistoricalClosingsTable() {
+      const tbody = document.getElementById('adminHistoricalClosingsTableBody');
+      if (!tbody) return;
+
+      const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
+
+      if (listaCierres.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="3" class="p-4 text-center text-slate-500 italic">No hay registros de cierres diarios guardados en la memoria de este terminal.</td>
+          </tr>`;
+        return;
+      }
+
+      let html = listaCierres.map(c => `
+        <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60">
+          <td class="p-3 font-medium text-white text-sm"><i class="fa-solid fa-calendar-day text-slate-500 mr-2"></i>${c.fecha}</td>
+          <td class="p-3 text-center text-slate-300 font-mono">${c.cantidadTickets} tickets emitidos</td>
+          <td class="p-3 text-right font-bold text-emerald-400 text-sm">$${Math.round(c.totalVendido).toLocaleString('es-CL')}</td>
+        </tr>
+      `).join('');
+
+      const totalAcumuladoMes = listaCierres.reduce((acc, c) => acc + c.totalVendido, 0);
+      const totalTicketsMes = listaCierres.reduce((acc, c) => acc + c.cantidadTickets, 0);
+
+      html += `
+        <thead class="bg-slate-950 text-white font-black border-t-2 border-slate-800">
+          <tr>
+            <td class="p-3 text-sm text-slate-300">TOTAL ACUMULADO MENSUAL</td>
+            <td class="p-3 text-center text-slate-400 font-mono">${totalTicketsMes} transacciones</td>
+            <td class="p-3 text-right text-base text-emerald-400">$${totalAcumuladoMes.toLocaleString('es-CL')}</td>
+          </tr>
+        </thead>
+      `;
+
+      tbody.innerHTML = html;
+    }
+
+    // 3. EXPORTADOR A EXCEL EXCLUSIVO PARA EL ADMINISTRADOR (LIBRERÍA SHEETJS)
+    function exportarCierresHistoricosAExcel() {
+      const usuarioActual = AppState.currentUser || JSON.parse(localStorage.getItem('tpv_current_user')) || { role: 'cajero' };
+      if (String(usuarioActual.role).toLowerCase() !== 'admin') {
+        alert("🚨 ACCESO DENEGADO: Tu cuenta no tiene permisos para descargar balances consolidados históricos.");
+        return;
+      }
+
+      const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
+      if (listaCierres.length === 0) {
+        alert("No hay registros en el histórico para exportar.");
+        return;
+      }
+
+      const filasExcel = listaCierres.map(c => ({
+        "Fecha de la Jornada": c.fecha,
+        "Tickets Emitidos": c.cantidadTickets,
+        "Total Recaudado ($)": c.totalVendido
+      }));
+
+      if (typeof XLSX !== 'undefined') {
+        const worksheet = XLSX.utils.json_to_sheet(filasExcel);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Cierres Consolidados");
+        XLSX.writeFile(workbook, `Reporte_Cierres_TPV_Mensual.xlsx`);
+      } else {
+        alert("Error: El motor SheetJS (XLSX) no está cargada en este equipo. Contacta soporte.");
+      }
+    }
+
+    // Disparador inicializador automático
+    setTimeout(() => { if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable(); }, 800);
 
     
 
