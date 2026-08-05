@@ -2904,15 +2904,61 @@ if (existeCategoria) {
         botonActivo.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
       }
 
-      // 2. Obligar al catálogo de ventas a ejecutar el filtro nativo de Antigravity
-      if (typeof renderCatalog === 'function') {
+            // 2. PARCHE EN CALIENTE: Forzar el filtrado real sobre las tarjetas de productos
+      const gridVentas = document.getElementById('productGrid');
+      if (gridVentas && typeof renderCatalog === 'function') {
+        // Ejecutamos la función original de dibujo
         renderCatalog();
+        
+        // Si el botón seleccionado es específico (distinto a "Todos"), barremos las tarjetas en caliente
+        if (categoria !== 'ALL') {
+          const textoBuscador = (document.getElementById('posSearchInput')?.value || '').trim().toLowerCase();
+          
+          // Filtramos la base de datos real del TPV unificando mayúsculas y minúsculas
+          const productosFiltrados = AppState.products.filter(p => {
+            const coincideCategoria = String(p.category).trim().toLowerCase() === categoria.trim().toLowerCase();
+            const coincideBusqueda = textoBuscador === '' || 
+                                     String(p.code).toLowerCase().includes(textoBuscador) || 
+                                     String(p.description).toLowerCase().includes(textoBuscador);
+            return coincideCategoria && coincideBusqueda;
+          });
+
+          // Si la categoría está vacía, mostramos el aviso elegante de Antigravity
+          if (productosFiltrados.length === 0) {
+            gridVentas.innerHTML = `
+              <div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-500 gap-2">
+                <i class="fa-solid fa-box-open text-3xl"></i>
+                <span class="text-xs">No se encontraron productos en la categoría: ${categoria}</span>
+              </div>`;
+          } else {
+            // Si hay productos, forzamos al catálogo a redibujar solo los del botón
+            // Esto se logra ocultando visualmente las tarjetas que no correspondan
+            const tarjetas = gridVentas.children;
+            let indexFiltrado = 0;
+            
+            // Recorremos los productos que renderCatalog pintó y ocultamos los intrusos
+            AppState.products.forEach((p, idxOriginal) => {
+              const coincideTexto = textoBuscador === '' || String(p.code).toLowerCase().includes(textoBuscador) || String(p.description).toLowerCase().includes(textoBuscador);
+              if (coincideTexto) {
+                const tarjetaHtml = tarjetas[indexFiltrado];
+                if (tarjetaHtml) {
+                  if (String(p.category).trim().toLowerCase() === categoria.trim().toLowerCase()) {
+                    tarjetaHtml.classList.remove('hidden');
+                  } else {
+                    tarjetaHtml.classList.add('hidden');
+                  }
+                }
+                indexFiltrado++;
+              }
+            });
+          }
+        }
       } else if (typeof filterCatalog === 'function') {
         filterCatalog();
       }
     }
 
-    // Monitoreo inteligente automático cada 1.5 segundos
+    // Monitoreo inteligente automático cada 1.5 segundos (Sincroniza "Huevos" y categorías borradas)
     setInterval(() => {
       if (!AppState || !AppState.categories) return;
 
@@ -2924,22 +2970,20 @@ if (existeCategoria) {
         ).join('');
       }
 
-      // B. Redibujar dinámicamente la barra horizontal del TPV Ventas para añadir "Huevos"
-      const containerBotones = document.getElementById('posCategoryButtonsContainer') || 
-                               document.querySelector('.flex.flex-wrap.gap-2.my-3') ||
-                               document.querySelector('div[id*="Category"]');
-      
+      // B. Redibujar dinámicamente la barra horizontal del TPV Ventas usando tu ID real
+      const containerBotones = document.getElementById('categoryFilterContainer');
       if (containerBotones) {
         let htmlBotones = `
-          <button onclick="filtrarCatalogoPorBoton('ALL')" id="btnFilterCat-ALL" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activePosCategoryFilter === 'ALL' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300'}">
+          <button onclick="filtrarCatalogoPorBoton('ALL')" id="btnFilterCat-ALL" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activePosCategoryFilter === 'ALL' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300'} whitespace-nowrap">
             Todos
           </button>
         `;
 
         AppState.categories.forEach(cat => {
           const isActive = activePosCategoryFilter === cat;
+          const idLimpio = cat.replace(/\s+/g, '');
           htmlBotones += `
-            <button onclick="filtrarCatalogoPorBoton('${cat}')" id="btnFilterCat-${cat.replace(/\s+/g, '')}" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${isActive ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'}">
+            <button onclick="filtrarCatalogoPorBoton('${cat}')" id="btnFilterCat-${idLimpio}" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${isActive ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'} whitespace-nowrap">
               ${cat}
             </button>
           `;
@@ -2951,6 +2995,7 @@ if (existeCategoria) {
         }
       }
     }, 1500);
+
 
   </script>
 </body>
