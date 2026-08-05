@@ -924,7 +924,7 @@
       pendingAdminCallback: null // Callback cuando salta el modal de clave Admin PIN
     };
 
-    // Inicializador de LocalStorage
+        // Inicializador de LocalStorage (VERSIÓN CORREGIDA Y PERSISTENTE)
     function initLocalStorage() {
       if (!localStorage.getItem('tpv_products')) localStorage.setItem('tpv_products', JSON.stringify(SEED_PRODUCTS));
       if (!localStorage.getItem('tpv_clients')) localStorage.setItem('tpv_clients', JSON.stringify(SEED_CLIENTS));
@@ -933,6 +933,10 @@
       if (!localStorage.getItem('tpv_users')) localStorage.setItem('tpv_users', JSON.stringify(SEED_USERS));
       if (!localStorage.getItem('tpv_sales_history')) localStorage.setItem('tpv_sales_history', JSON.stringify([]));
       if (!localStorage.getItem('tpv_shift_status')) localStorage.setItem('tpv_shift_status', "OPEN");
+      
+      // Semilla inicial por defecto si la base de datos de categorías está limpia en el PC
+      const seedCategorias = ['Encurtidos', 'Frutos Secos', 'Abarrotes', 'Semillas', 'Condimentos'];
+      if (!localStorage.getItem('tpv_categories')) localStorage.setItem('tpv_categories', JSON.stringify(seedCategorias));
 
       AppState.products = JSON.parse(localStorage.getItem('tpv_products'));
       AppState.clients = JSON.parse(localStorage.getItem('tpv_clients'));
@@ -940,8 +944,17 @@
       AppState.ticketConfig = JSON.parse(localStorage.getItem('tpv_ticket_config'));
       AppState.users = JSON.parse(localStorage.getItem('tpv_users'));
       AppState.salesHistory = JSON.parse(localStorage.getItem('tpv_sales_history'));
-      AppState.shiftStatus = localStorage.getItem('tpv_shift_status');
+            AppState.shiftStatus = localStorage.getItem('tpv_shift_status');
+      
+      // Cargar las categorías dinámicas guardadas en el disco duro
+      AppState.categories = JSON.parse(localStorage.getItem('tpv_categories')) || seedCategorias;
+
+      // LINEA INYECTADA: Refresca los selectores inmediatamente al arrancar
+      setTimeout(() => {
+        if (typeof renderAdminCategoriesTable === 'function') renderAdminCategoriesTable();
+      }, 100);
     }
+
 
     function saveStateToLocalStorage() {
       localStorage.setItem('tpv_products', JSON.stringify(AppState.products));
@@ -950,7 +963,11 @@
       localStorage.setItem('tpv_ticket_config', JSON.stringify(AppState.ticketConfig));
       localStorage.setItem('tpv_sales_history', JSON.stringify(AppState.salesHistory));
       localStorage.setItem('tpv_shift_status', AppState.shiftStatus);
+      
+      // FORZAR EL GUARDADO PERMANENTE DE LAS CATEGORÍAS MODIFICADAS
+      localStorage.setItem('tpv_categories', JSON.stringify(AppState.categories || []));
     }
+
 
     /* ==========================================================================
        2. MÓDULO DE AUTENTICACIÓN, ROLES Y PIN INTERCEPTOR
@@ -2759,14 +2776,32 @@ if (existeCategoria) {
       guardarYRefrescarCategorias();
     }
 
-    function actualizarSelectoresCategoriasNativos() {
+       function actualizarSelectoresCategoriasNativos() {
+      // 1. Actualizar el menú desplegable del formulario para crear/editar productos
       const selectForm = document.getElementById('prodCategory');
       if (selectForm) {
         selectForm.innerHTML = AppState.categories.map(cat => 
           `<option value="${cat}">${cat}</option>`
         ).join('');
       }
+
+      // 2. Rastrear y actualizar de forma inteligente el filtro de la pantalla principal de ventas
+      // Buscamos de forma masiva todos los posibles IDs o selectores que llamen al filtro del catálogo
+      const filtroVentas = document.getElementById('catalogCategoryFilter') || 
+                           document.getElementById('categoryFilter') || 
+                           document.getElementById('posCategoryFilter') || 
+                           document.querySelector('select[onchange*="filterCatalog"]');
+                            
+      if (filtroVentas) {
+        let htmlFiltro = `<option value="ALL">Todas las Categorías</option>`;
+        htmlFiltro += AppState.categories.map(cat => 
+          `<option value="${cat}">${cat}</option>`
+        ).join('');
+        
+        filtroVentas.innerHTML = htmlFiltro;
+      }
     }
+
 
     function guardarYRefrescarCategorias() {
       if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
