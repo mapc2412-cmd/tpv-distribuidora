@@ -230,17 +230,28 @@
           <!-- CLIENTE Y FORMA DE PAGO -->
           <div class="pt-3 border-t border-slate-800 flex flex-col gap-3">
             
-            <!-- ASIGNACIÓN DE CLIENTE -->
+                        <!-- ASIGNACIÓN DE CLIENTE: BUSCADOR PREDICTIVO PREMIUM -->
             <div>
               <label class="block text-xs text-slate-400 font-medium mb-1 flex justify-between">
                 <span>Cliente Asignado:</span>
                 <button onclick="switchTab('admin'); switchAdminTab('clients')" class="text-emerald-400 hover:underline text-[10px]">+ Nuevo Cliente</button>
               </label>
-              <div class="relative">
-                <select id="cartClientSelect" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-                  <option value="">-- Cliente Final (Venta General) --</option>
-                  <!-- Opciones cargadas por JS -->
-                </select>
+              <div class="relative w-full">
+                <input type="text" id="posClientSearchInput" placeholder="🔍 Escribe Nombre o RUT del cliente frecuentes..." 
+                  class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all">
+                
+                <!-- Botón X rápido para limpiar y regresar a Cliente Final al instante -->
+                <button type="button" onclick="desvincularClientePOS()" id="btnClearPosClient" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs">
+                  <i class="fa-solid fa-circle-xmark"></i>
+                </button>
+
+                <!-- Lista flotante de sugerencias predictivas -->
+                <div id="posClientSuggestions" class="hidden absolute left-0 right-0 mt-1 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-50 text-xs text-slate-200">
+                  <!-- Se rellena dinámicamente con JavaScript -->
+                </div>
+                
+                <!-- ID de respaldo compatible con el motor original de Antigravity -->
+                <input type="hidden" id="cartClientSelect" value="">
               </div>
             </div>
 
@@ -3113,6 +3124,123 @@ if (existeCategoria) {
         }
       }
     }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
+    /* ==========================================================================
+       SISTEMA DE BUSCADOR PREDICTIVO DE CLIENTES Y EXPANSOR DE CARRITO (45%)
+       ========================================================================== */
+
+    // Escuchar la escritura en caliente del teclado sobre el nuevo buscador
+    document.body.addEventListener('input', function(e) {
+      if (e.target && e.target.id === 'posClientSearchInput') {
+        buscarClienteEnVivoPOS();
+      }
+    });
+
+    function buscarClienteEnVivoPOS() {
+      const input = document.getElementById('posClientSearchInput');
+      const suggestions = document.getElementById('posClientSuggestions');
+      const btnClear = document.getElementById('btnClearPosClient');
+      if (!input || !suggestions) return;
+
+      const valor = input.value.trim().toLowerCase();
+
+      // Si el buscador está vacío, volvemos a Cliente Final de forma transparente
+      if (valor === "") {
+        suggestions.classList.add('hidden');
+        if (btnClear) btnClear.classList.add('hidden');
+        document.getElementById('cartClientSelect').value = ""; // Venta general nativa
+        return;
+      }
+
+      if (btnClear) btnClear.classList.remove('hidden');
+
+      // Filtrar el listado de clientes por su Nombre o por su RUT
+      const clientesFiltrados = (AppState.clients || []).filter(c => 
+        (c.name && c.name.toLowerCase().includes(valor)) || 
+        (c.rut && c.rut.toLowerCase().includes(valor))
+      );
+
+      if (clientesFiltrados.length === 0) {
+        suggestions.innerHTML = `<div class="p-2.5 text-slate-500 italic">No se encontraron clientes coincidentes</div>`;
+        suggestions.classList.remove('hidden');
+        return;
+      }
+
+      // Dibujar la lista desplegable flotante de coincidencias
+      suggestions.innerHTML = clientesFiltrados.map(c => `
+        <div onclick="seleccionarClientePOS('${c.id}', '${c.name}', '${c.rut || ''}')" 
+             class="p-2.5 hover:bg-emerald-600 hover:text-white cursor-pointer transition-colors border-b border-slate-800/60 flex justify-between items-center gap-2">
+          <span class="font-semibold text-white">${c.name}</span>
+          <span class="text-[10px] text-slate-400 font-mono">${c.rut || 'Sin RUT'}</span>
+        </div>
+      `).join('');
+
+      suggestions.classList.remove('hidden');
+    }
+
+    function seleccionarClientePOS(id, nombre, rut) {
+      // Sincronizamos el ID del cliente seleccionado con el motor nativo del TPV para que salga en la boleta
+      document.getElementById('cartClientSelect').value = id;
+      
+      // Mostrar estéticamente el nombre en el cuadro
+      document.getElementById('posClientSearchInput').value = rut ? `${nombre} (${rut})` : nombre;
+      document.getElementById('posClientSearchInput').readOnly = true; // Congelar visualmente
+
+      document.getElementById('posClientSuggestions').classList.add('hidden');
+    }
+
+    function desvincularClientePOS() {
+      // Regresar al estado predeterminado de Venta General (Cliente Final)
+      document.getElementById('cartClientSelect').value = "";
+      document.getElementById('posClientSearchInput').value = "";
+      document.getElementById('posClientSearchInput').readOnly = false;
+      document.getElementById('posClientSuggestions').classList.add('hidden');
+      if (document.getElementById('btnClearPosClient')) document.getElementById('btnClearPosClient').classList.add('hidden');
+    }
+
+    // Ocultar las sugerencias automáticamente si el usuario hace clic en otro lado de la pantalla
+    document.addEventListener('click', function(e) {
+      const sug = document.getElementById('posClientSuggestions');
+      const input = document.getElementById('posClientSearchInput');
+      if (sug && !sug.contains(e.target) && e.target !== input) {
+        sug.classList.add('hidden');
+      }
+    });
+
+    // MOTOR INTELIGENTE EN SEGUNDO PLANO QUE RESTRUCTURA LAS PROPORCIONES DEL TPV (55% / 45%)
+    setInterval(() => {
+      const inputCliente = document.getElementById('posClientSearchInput');
+      if (!inputCliente) return;
+
+      // Navegamos por el árbol HTML para pillar la columna del Carrito y expandirla de forma externa
+      const cajaAsignacion = inputCliente.parentElement.parentElement;
+      const columnaCarrito = cajaAsignacion ? cajaAsignacion.closest('.bg-slate-900') : null;
+      const filaContenedoraPos = columnaCarrito ? columnaCarrito.parentElement : null;
+
+      if (filaContenedoraPos && columnaCarrito) {
+        const columnas = filaContenedoraPos.children;
+        const columnaCatalogoProductos = columnas[0]; // La primera columna son las fotos
+
+        // Reconfiguramos la cuadrícula de Tailwind en caliente a un sistema de 12 fracciones
+        if (filaContenedoraPos.classList.contains('grid') || filaContenedoraPos.className.includes('grid')) {
+          filaContenedoraPrincipal = filaContenedoraPos;
+          filaContenedoraPrincipal.className = "grid grid-cols-1 lg:grid-cols-12 gap-5 items-start mt-4";
+          
+          if (columnaCatalogoProductos) columnaCatalogoProductos.className = "lg:col-span-7 flex flex-col gap-4";
+          if (columnaCarrito) {
+            columnaCarrito.className = "lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl sticky top-4 flex flex-col justify-between min-h-[calc(100vh-140px)]";
+          }
+        } else {
+          // Si el diseño original usaba Flexbox, forzamos las proporciones en pixeles directos de pantalla
+          filaContenedoraPos.className = "flex flex-col lg:flex-row gap-5 items-start mt-4 w-full";
+          if (columnaCatalogoProductos) {
+            columnaCatalogoProductos.style.width = window.innerWidth >= 1024 ? "55%" : "100%";
+          }
+          if (columnaCarrito) {
+            columnaCarrito.style.width = window.innerWidth >= 1024 ? "45%" : "100%";
+          }
+        }
+      }
+    }, 1500); // Custodia el redimensionado continuo cada 1.5 segundos de forma invisible
 
   </script>
 </body>
