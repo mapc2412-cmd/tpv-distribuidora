@@ -157,8 +157,8 @@
     <!-- VISTA 1: INTERFAZ TPV VENTAS -->
     <section id="view-pos" class="tab-view flex flex-col lg:flex-row gap-6 items-start h-full">
       
-      <!-- IZQUIERDA: CATÁLOGO Y BÚSQUEDA (60%) -->
-      <div class="w-full lg:w-3/5 flex flex-col gap-4">
+      <!-- IZQUIERDA: CATÁLOGO Y BÚSQUEDA (ANCHO OPTIMIZADO AL 55%) -->
+      <div class="w-full lg:w-[55%] flex flex-col gap-4">
         
         <!-- BUSCADOR Y LECTOR CÓDIGO BARRAS -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row gap-3 items-center">
@@ -184,10 +184,10 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto max-h-[calc(100vh-280px)] pr-1" id="productGrid">
           <!-- Cargado por JS -->
         </div>
-      </div>
+      </div> <!-- Aquí cierra de forma limpia la columna de productos -->
 
-      <!-- DERECHA: CARRITO E INFORMACIÓN DE COMPRA (40%) -->
-      <div class="w-full lg:w-2/5 flex flex-col gap-4 sticky top-20">
+      <!-- DERECHA: CARRITO E INFORMACIÓN DE COMPRA EN GRAN FORMATO (ANCHO OPTIMIZADO AL 45%) -->
+      <div class="w-full lg:w-[45%] flex flex-col gap-4 sticky top-20">
         
         <!-- PANEL DE CARRITO -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[calc(100vh-160px)]">
@@ -203,6 +203,7 @@
               <i class="fa-solid fa-trash-can"></i> Vaciar
             </button>
           </div>
+
 
           <!-- TABLA DE ARTÍCULOS EN CARRITO -->
           <div class="flex-1 overflow-y-auto py-2 my-1">
@@ -3206,41 +3207,7 @@ if (existeCategoria) {
       }
     });
 
-    // MOTOR INTELIGENTE EN SEGUNDO PLANO QUE RESTRUCTURA LAS PROPORCIONES DEL TPV (55% / 45%)
-    setInterval(() => {
-      const inputCliente = document.getElementById('posClientSearchInput');
-      if (!inputCliente) return;
-
-      // Navegamos por el árbol HTML para pillar la columna del Carrito y expandirla de forma externa
-      const cajaAsignacion = inputCliente.parentElement.parentElement;
-      const columnaCarrito = cajaAsignacion ? cajaAsignacion.closest('.bg-slate-900') : null;
-      const filaContenedoraPos = columnaCarrito ? columnaCarrito.parentElement : null;
-
-      if (filaContenedoraPos && columnaCarrito) {
-        const columnas = filaContenedoraPos.children;
-        const columnaCatalogoProductos = columnas[0]; // La primera columna son las fotos
-
-        // Reconfiguramos la cuadrícula de Tailwind en caliente a un sistema de 12 fracciones
-        if (filaContenedoraPos.classList.contains('grid') || filaContenedoraPos.className.includes('grid')) {
-          filaContenedoraPrincipal = filaContenedoraPos;
-          filaContenedoraPrincipal.className = "grid grid-cols-1 lg:grid-cols-12 gap-5 items-start mt-4";
-          
-          if (columnaCatalogoProductos) columnaCatalogoProductos.className = "lg:col-span-7 flex flex-col gap-4";
-          if (columnaCarrito) {
-            columnaCarrito.className = "lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl sticky top-4 flex flex-col justify-between min-h-[calc(100vh-140px)]";
-          }
-        } else {
-          // Si el diseño original usaba Flexbox, forzamos las proporciones en pixeles directos de pantalla
-          filaContenedoraPos.className = "flex flex-col lg:flex-row gap-5 items-start mt-4 w-full";
-          if (columnaCatalogoProductos) {
-            columnaCatalogoProductos.style.width = window.innerWidth >= 1024 ? "55%" : "100%";
-          }
-          if (columnaCarrito) {
-            columnaCarrito.style.width = window.innerWidth >= 1024 ? "45%" : "100%";
-          }
-        }
-      }
-    }, 1500); // Custodia el redimensionado continuo cada 1.5 segundos de forma invisible
+    
 
   </script>
 </body>
