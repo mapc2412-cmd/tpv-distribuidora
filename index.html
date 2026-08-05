@@ -2809,7 +2809,7 @@ if (existeCategoria) {
       guardarYRefrescarCategorias();
     }
 
-       function actualizarSelectoresCategoriasNativos() {
+           function actualizarSelectoresCategoriasNativos() {
       // 1. Actualizar el menú desplegable del formulario para crear/editar productos
       const selectForm = document.getElementById('prodCategory');
       if (selectForm) {
@@ -2818,33 +2818,45 @@ if (existeCategoria) {
         ).join('');
       }
 
-      // 2. Rastrear y actualizar de forma inteligente el filtro de la pantalla principal de ventas
-      // Buscamos de forma masiva todos los posibles IDs o selectores que llamen al filtro del catálogo
-      const filtroVentas = document.getElementById('catalogCategoryFilter') || 
-                           document.getElementById('categoryFilter') || 
-                           document.getElementById('posCategoryFilter') || 
-                           document.querySelector('select[onchange*="filterCatalog"]');
-                            
-      if (filtroVentas) {
-        let htmlFiltro = `<option value="ALL">Todas las Categorías</option>`;
-        htmlFiltro += AppState.categories.map(cat => 
-          `<option value="${cat}">${cat}</option>`
-        ).join('');
-        
-        filtroVentas.innerHTML = htmlFiltro;
+      // 2. Renderizar dinámicamente los botones horizontales usando tu ID real del TPV
+      const containerBotones = document.getElementById('categoryFilterContainer');
+      if (containerBotones) {
+        // Inicializamos con el botón universal "Todos" manteniendo tu estilo premium
+        let htmlBotones = `
+          <button onclick="filtrarCatalogoPorBoton('ALL')" id="btnFilterCat-ALL" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all bg-emerald-600 text-white shadow-md whitespace-nowrap">
+            Todos
+          </button>
+        `;
+
+        // Generamos un botón estilizado automáticamente por cada categoría real de tu base de datos
+        htmlBotones += AppState.categories.map(cat => {
+          const idLimpio = cat.replace(/\s+/g, '');
+          const isActive = window.currentSelectedCategory === cat;
+          return `
+            <button onclick="filtrarCatalogoPorBoton('${cat}')" id="btnFilterCat-${idLimpio}" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${isActive ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'} whitespace-nowrap">
+              ${cat}
+            </button>
+          `;
+        }).join('');
+
+        containerBotones.innerHTML = htmlBotones;
       }
     }
-
 
     function guardarYRefrescarCategorias() {
       if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
       else if (typeof saveState === 'function') saveState();
 
-      renderAdminCategoriesTable();
+      if (typeof renderAdminCategoriesTable === 'function') renderAdminCategoriesTable();
+      
+      // FORCE REAL: Forzar la actualización inmediata de la barra de botones del cajero
+      actualizarSelectoresCategoriasNativos();
+
       if (typeof renderCatalog === 'function') renderCatalog();
       if (typeof renderInventory === 'function') renderInventory();
       if (typeof renderInventoryUI === 'function') renderInventoryUI();
     }
+
     // MOTOR INTELIGENTE ANTI-MAYÚSCULAS PARA CATEGORÍAS (CASO EXCEL Y CRUDS)
     setInterval(() => {
       // 1. Unificar categorías en el catálogo para que la búsqueda ignore mayúsculas
