@@ -2872,6 +2872,73 @@ if (existeCategoria) {
         }
       }
     }, 2000); // Se ejecuta en segundo plano cada 2 segundos automáticamente
+    // MOTOR DE CONTROL DINÁMICO DE CATEGORÍAS PARA LA PANTALLA DE VENTAS
+    let activePosCategoryFilter = 'ALL';
+
+    function filtrarCatalogoPorBoton(categoria) {
+      activePosCategoryFilter = categoria;
+      window.currentSelectedCategory = categoria; // Sincroniza con el motor del TPV
+      
+      // 1. Alternar visualmente los colores de los botones de la barra de ventas
+      document.querySelectorAll('.cat-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
+        btn.classList.add('bg-slate-800', 'text-slate-300');
+      });
+
+      const idBotonActivo = categoria === 'ALL' ? 'btnFilterCat-ALL' : `btnFilterCat-${categoria.replace(/\s+/g, '')}`;
+      const botonActivo = document.getElementById(idBotonActivo);
+      if (botonActivo) {
+        botonActivo.classList.remove('bg-slate-800', 'text-slate-300');
+        botonActivo.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+      }
+
+      // 2. Obligar al catálogo de ventas a ejecutar el filtro nativo de Antigravity
+      if (typeof renderCatalog === 'function') {
+        renderCatalog();
+      } else if (typeof filterCatalog === 'function') {
+        filterCatalog();
+      }
+    }
+
+    // Monitoreo inteligente automático cada 1.5 segundos
+    setInterval(() => {
+      if (!AppState || !AppState.categories) return;
+
+      // A. Rellenar automáticamente el menú desplegable del formulario interno (prodCategory)
+      const selectForm = document.getElementById('prodCategory');
+      if (selectForm && selectForm.children.length !== AppState.categories.length) {
+        selectForm.innerHTML = AppState.categories.map(cat => 
+          `<option value="${cat}">${cat}</option>`
+        ).join('');
+      }
+
+      // B. Redibujar dinámicamente la barra horizontal del TPV Ventas para añadir "Huevos"
+      const containerBotones = document.getElementById('posCategoryButtonsContainer') || 
+                               document.querySelector('.flex.flex-wrap.gap-2.my-3') ||
+                               document.querySelector('div[id*="Category"]');
+      
+      if (containerBotones) {
+        let htmlBotones = `
+          <button onclick="filtrarCatalogoPorBoton('ALL')" id="btnFilterCat-ALL" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activePosCategoryFilter === 'ALL' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300'}">
+            Todos
+          </button>
+        `;
+
+        AppState.categories.forEach(cat => {
+          const isActive = activePosCategoryFilter === cat;
+          htmlBotones += `
+            <button onclick="filtrarCatalogoPorBoton('${cat}')" id="btnFilterCat-${cat.replace(/\s+/g, '')}" class="cat-filter-btn px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${isActive ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'}">
+              ${cat}
+            </button>
+          `;
+        });
+
+        // Solo actualiza el diseño si cambió la cantidad de categorías para evitar parpadeos molestos
+        if (containerBotones.children.length !== (AppState.categories.length + 1)) {
+          containerBotones.innerHTML = htmlBotones;
+        }
+      }
+    }, 1500);
 
   </script>
 </body>
