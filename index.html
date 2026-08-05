@@ -292,7 +292,7 @@
 
     </section>
 
-    <!-- VISTA 2: HISTORIAL DE VENTAS Y CIERRE DE CAJA -->
+   <!-- VISTA 2: HISTORIAL DE VENTAS Y CIERRE DE CAJA -->
     <section id="view-history" class="tab-view hidden flex flex-col gap-6">
       
       <!-- CABECERA RESUMEN DE CAJA -->
@@ -358,12 +358,12 @@
         </div>
       </div>
 
-      <!-- PESTAÑA ADMIN INYECTADA: ACUMULADO CONSOLIDADO POR DÍA (CON CANDADO ABSOLUTO POR ROL) -->
+      <!-- PESTAÑA ADMIN INYECTADA: ACUMULADO CONSOLIDADO POR TURNO (CON CANDADO ABSOLUTO POR ROL) -->
       <div id="adminHistoricalClosingsSection" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 mt-2">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h3 class="font-bold text-white text-base flex items-center gap-2">
-              <i class="fa-solid fa-chart-line text-emerald-400"></i> Historial de Ventas Consolidadas por Día
+              <i class="fa-solid fa-chart-line text-emerald-400"></i> Historial de Ventas Consolidadas por Turno
             </h3>
             <p class="text-xs text-slate-400 mt-1">Resumen individual de jornadas anteriores para auditoría y control de fin de mes.</p>
           </div>
@@ -378,8 +378,9 @@
             <thead class="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
               <tr>
                 <th class="p-3">Fecha de la Jornada</th>
-                <th class="p-3 text-center">Tickets Emitidos</th>
-                <th class="p-3 text-right">Total Recaudado</th>
+                <th class="p-3">Cajero Responsable</th>
+                <th class="p-3 text-center">Desglose Turno</th>
+                <th class="p-3 text-right">Total Ventas Turno</th>
               </tr>
             </thead>
             <tbody id="adminHistoricalClosingsTableBody">
@@ -390,6 +391,7 @@
       </div>
 
     </section>
+
 
 
     <!-- VISTA 3: ADMINISTRACIÓN Y MANTENIMIENTO COMPLETO -->
@@ -2703,48 +2705,75 @@
 
       alert("🎉 ¡Cierre de caja finalizado con éxito! El turno ha sido bloqueado y archivado. Los marcadores se reiniciaron a $0.");
     }
-    /* ==========================================================================
-       SISTEMA DE CIERRE Y REAPERTURA DE CAJA (CONTROL ADMINISTRADOR)
+       /* ==========================================================================
+       SISTEMA DE GESTIÓN MULTI-TURNO INDEPENDIENTE (CON FONDO DE CAJA)
        ========================================================================== */
 
-        function triggerCashClosure() {
+    function triggerCashClosure() {
       const historial = AppState.salesHistory || [];
       
       // 1. Si no hay ventas, avisamos de forma segura
       if (historial.length === 0) {
-        alert("No hay ventas registradas en la jornada actual para generar un cierre de caja.");
+        alert("No hay ventas registradas en este turno para generar un cierre de caja.");
         return;
       }
 
       const todayTotal = historial.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+      const usuarioActual = AppState.currentUser || JSON.parse(localStorage.getItem('tpv_current_user')) || { name: 'Cajero', role: 'cajero' };
       
-      // 2. Confirmación del cierre
-      if (!confirm(`🚨 SEGURIDAD ADMINISTRADOR: ¿Está seguro de realizar el CIERRE DE CAJA JORNADA?\n\nTotal Recaudado Hoy: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nEsto bloqueará el turno de forma inmediata e impedirá emitir más boletas.`)) {
+      // 2. Solicitar el fondo de caja con el que inició el turno para el cuadre contable
+      const fondoEntrada = prompt(`TURNO DE: ${usuarioActual.name}\n\nTotal Recaudado en Ventas: $${Math.round(todayTotal).toLocaleString('es-CL')}\n\nPor favor, ingrese el MONTO DEL FONDO DE CAJA INICIAL ($) de este turno:`, "0");
+      if (fondoEntrada === null) return; // Cancela el cierre si presiona cancelar
+
+      const fondoCaja = parseFloat(fondoEntrada) || 0;
+      const totalEntregar = Math.round(todayTotal) + fondoCaja;
+
+      if (!confirm(`🚨 CONFIRMACIÓN DE CIERRE DE TURNO\n\nCajero: ${usuarioActual.name}\nTotal Ventas: $${Math.round(todayTotal).toLocaleString('es-CL')}\nFondo Inicial: $${fondoCaja.toLocaleString('es-CL')}\nEfectivo Esperado en Caja: $${totalEntregar.toLocaleString('es-CL')}\n\n¿Desea finalizar su turno e iniciar la próxima caja desde $0?`)) {
         return;
       }
 
-      // 3. CAMBIO DE ESTADO EXTREMO EN EL DISCO DURO Y MEMORIA GLOBAL
-      AppState.shiftStatus = 'CLOSED';
-      localStorage.setItem('tpv_shift_status', 'CLOSED');
+      // 3. Obtener la fecha de hoy de forma elegante para el reporte
+      const hoy = new Date();
+      const fechaFormateada = hoy.getDate().toString().padStart(2, '0') + '-' + 
+                             (hoy.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                             hoy.getFullYear();
 
-      // Ocultar botón de cerrar y mostrar botón de reabrir nativos
-      const btnClose = document.getElementById('btnCloseShift');
-      const btnReopen = document.getElementById('btnReopenShift');
+      // 4. Archivar el turno de forma individual en el acumulado mensual
+      if (!AppState.dailyClosings) AppState.dailyClosings = [];
       
-      if (btnClose) btnClose.classList.add('hidden');
-      if (btnReopen) btnReopen.classList.remove('hidden');
+      AppState.dailyClosings.push({
+        fecha: fechaFormateada,
+        cajero: usuarioActual.name,
+        fondoInicial: fondoCaja,
+        totalVendido: Math.round(todayTotal),
+        amountTickets: historial.length
+      });
 
-      // Guardar el estado cerrado físicamente en el local storage
+      // Persistir de forma permanente en el disco duro del PC
+      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+
+      // 5. LIMPIEZA ABSOLUTA DE JORNADA ACTIVA A $0 PARA EL SIGUIENTE TURNO
+      AppState.salesHistory = [];
+      localStorage.setItem('tpv_sales_history', JSON.stringify([]));
+      
+      // AUTONOMÍA: La caja queda abierta para que el próximo vendedor trabaje de inmediato sin PIN de Admin
+      AppState.shiftStatus = 'OPEN';
+      localStorage.setItem('tpv_shift_status', 'OPEN');
+      localStorage.setItem('tpv_last_active_date', fechaFormateada);
+
+      // Guardar el estado limpio físicamente en el local storage
       if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
       else if (typeof saveState === 'function') saveState();
 
-      // 4. Limpiar saldos colgados del carrito en caliente
+      // 6. Forzar vaciado y refresco en caliente de las pantallas visuales
       if (AppState && AppState.cart) AppState.cart = [];
       if (typeof renderCart === 'function') renderCart();
       if (typeof updateCartUI === 'function') updateCartUI();
       if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+      if (typeof renderSalesHistory === 'function') renderSalesHistory();
+      if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
 
-      alert("🔒 Caja cerrada y turno bloqueado con éxito. Se ha activado el escudo perimetral de seguridad.");
+      alert(`🎉 ¡Turno finalizado con éxito! La información de ${usuarioActual.name} fue archivada.\nEl terminal ha quedado limpio a $0 para el siguiente turno de forma autónoma.`);
     }
 
 
