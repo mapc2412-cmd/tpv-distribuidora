@@ -2704,7 +2704,7 @@
     }
 
 
-    function reopenShiftWithAdminPin() {
+        function reopenShiftWithAdminPin() {
       // 1. Seguridad: Solicitar el PIN del Administrador para reabrir (9999 o admin123)
       const pinIngresado = prompt("SEGURIDAD TPV: Ingrese el PIN o Clave de Administrador para REABRIR la caja:");
       if (!pinIngresado) return;
@@ -2719,21 +2719,37 @@
         if (btnClose) btnClose.classList.remove('hidden');
         if (btnReopen) btnReopen.classList.add('hidden');
 
-        // 3. Devolver el estado del TPV a caja abierta
-        AppState.cajaOperativa = true;
+        // 3. CAMBIO DE ESTADO EXTREMO EN EL DISCO DURO (Rompe el bucle del cortafuegos)
+        AppState.shiftStatus = 'OPEN';
+        localStorage.setItem('tpv_shift_status', 'OPEN');
 
+        // Destruir el cartel de terminal bloqueado de forma inmediata del HTML si existe
+        const cartelLock = document.getElementById('tpv-lockout-overlay');
+        if (cartelLock) {
+          cartelLock.remove();
+        }
+
+        // Liberar físicamente el teclado y el mouse en caliente
+        if (window.tpvBloqueoTeclado) {
+          window.removeEventListener('keydown', window.tpvBloqueoTeclado, true);
+          window.removeEventListener('keypress', window.tpvBloqueoTeclado, true);
+        }
+
+        // Guardar el estado abierto de forma permanente en la memoria del PC
         if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
         else if (typeof saveState === 'function') saveState();
 
-        // 4. Refrescar los paneles
+        // 4. Refrescar los paneles operacionales
         if (typeof renderSalesHistory === 'function') renderSalesHistory();
         if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+        if (typeof renderCatalog === 'function') renderCatalog();
 
-        alert("🔓 ¡Caja REABIERTA con éxito! El turno vuelve a estar operativo para registrar ventas o correcciones.");
+        alert("🔓 ¡Caja REABIERTA con éxito! El terminal y los periféricos vuelven a estar operativos.");
       } else {
         alert("❌ Clave incorrecta. Acceso denegado. Solo el Administrador puede reabrir la caja.");
       }
     }
+
     /* ==========================================================================
        GESTIÓN DINÁMICA DE CATEGORÍAS (CONTROL ADMINISTRADOR)
        ========================================================================== */
