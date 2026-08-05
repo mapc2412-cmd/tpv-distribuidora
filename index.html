@@ -1982,7 +1982,7 @@
       if (secName === 'categories') renderAdminCategoriesTable(); // <-- ACTIVAR CATEGORÍAS EN PANTALLA
     }
 
-    // CRUD PRODUCTOS
+    // CRUD PRODUCTOS (VERSIÓN BLINDADA CONTRA FILTROS)
     function renderAdminProductsTable() {
       const tbody = document.getElementById('adminProductsTableBody');
       const searchVal = (document.getElementById('adminProductSearch')?.value || '').trim().toLowerCase();
@@ -1991,10 +1991,10 @@
         p.code.toLowerCase().includes(searchVal) || p.description.toLowerCase().includes(searchVal)
       );
 
-      tbody.innerHTML = filtered.map((p, idx) => `
+      tbody.innerHTML = filtered.map((p) => `
         <tr class="hover:bg-slate-800/40 transition-colors">
           <td class="p-3">
-            <img src="${p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'}" class="w-8 h-8 rounded-lg object-cover bg-slate-950" onerror="this.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&q=80'">
+            <img src="${p.image || 'https://unsplash.com'}" class="w-8 h-8 rounded-lg object-cover bg-slate-950" onerror="this.src='https://unsplash.com'">
           </td>
           <td class="p-3 font-mono font-bold text-white">${p.code}</td>
           <td class="p-3 font-medium text-slate-200">${p.description}</td>
@@ -2004,34 +2004,50 @@
           <td class="p-3 text-right ${p.stock < 5 ? 'text-amber-400 font-bold' : 'text-slate-300'}">${p.unitType === 'kg' ? p.stock.toFixed(3) + ' kg' : p.stock + ' un'}</td>
           <td class="p-3 text-center">
             <div class="flex items-center justify-center gap-1">
-              <button onclick="editProduct(${idx})" class="p-1.5 text-slate-400 hover:text-emerald-400"><i class="fa-solid fa-pen-to-square"></i></button>
-              <button onclick="deleteProduct(${idx})" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
+              <!-- SE CAMBIA IDX POR EL CÓDIGO DE BARRA ÚNICO -->
+              <button onclick="editProduct('${p.code}')" class="p-1.5 text-slate-400 hover:text-emerald-400"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="deleteProduct('${p.code}')" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
             </div>
           </td>
         </tr>
       `).join('');
     }
 
-    function openProductModal(index = -1) {
+
+        function openProductModal(codigoBuscar = '') {
       const modal = document.getElementById('productFormModal');
       const form = document.getElementById('productCrudForm');
       form.reset();
 
-      if (index >= 0) {
-        const prod = AppState.products[index];
+      // Si viene un código de barra válido, significa que estamos EDITANDO
+      if (codigoBuscar !== '') {
+        const prod = AppState.products.find(p => String(p.code).trim() === String(codigoBuscar).trim());
+        
+        if (!prod) {
+          showToast('Error: No se encontró el producto a editar.', 'error');
+          return;
+        }
+
         document.getElementById('productFormTitle').textContent = "Editar Producto";
-        document.getElementById('prodEditIndex').value = index;
+        document.getElementById('prodEditIndex').value = codigoBuscar; // Guardamos el código como referencia única
         document.getElementById('prodBarcode').value = prod.code;
         document.getElementById('prodBarcode').readOnly = true;
         document.getElementById('prodCategory').value = prod.category;
+        
+        // Soporte por si tu formulario tiene el campo de marca (prodBrand)
+        if (document.getElementById('prodBrand')) {
+          document.getElementById('prodBrand').value = prod.brand || prod.marca || '';
+        }
+        
         document.getElementById('prodDescription').value = prod.description;
         document.getElementById('prodUnitType').value = prod.unitType;
         document.getElementById('prodPrice').value = prod.price;
         document.getElementById('prodStock').value = prod.stock;
         document.getElementById('prodImage').value = prod.image || '';
       } else {
+        // Si no viene un código, significa que estamos CREANDO uno nuevo
         document.getElementById('productFormTitle').textContent = "Crear Nuevo Producto";
-        document.getElementById('prodEditIndex').value = -1;
+        document.getElementById('prodEditIndex').value = '-1';
         document.getElementById('prodBarcode').readOnly = false;
       }
 
@@ -2044,26 +2060,34 @@
 
     function saveProductSubmit(e) {
       e.preventDefault();
-      const idx = parseInt(document.getElementById('prodEditIndex').value);
+      const refEdit = document.getElementById('prodEditIndex').value; // Puede ser '-1' o el código de barra real
       const code = document.getElementById('prodBarcode').value.trim();
       const category = document.getElementById('prodCategory').value;
+      const brand = document.getElementById('prodBrand') ? document.getElementById('prodBrand').value.trim() : '';
       const description = document.getElementById('prodDescription').value.trim();
       const unitType = document.getElementById('prodUnitType').value;
       const price = parseFloat(document.getElementById('prodPrice').value);
       const stock = parseFloat(document.getElementById('prodStock').value);
       const image = document.getElementById('prodImage').value.trim();
 
-      if (idx === -1) {
-        // Verificar duplicado de código
-        if (AppState.products.some(p => p.code === code)) {
+      if (refEdit === '-1') {
+        // Verificar duplicado de código (Ignorando mayúsculas/minúsculas de forma inteligente)
+        if (AppState.products.some(p => String(p.code).trim().toLowerCase() === code.toLowerCase())) {
           showToast('El código de barras ya existe en el inventario.', 'error');
           return;
         }
-        AppState.products.push({ code, description, category, unitType, price, stock, image });
+        AppState.products.push({ code, brand, description, category, unitType, price, stock, image });
         showToast('Producto creado con éxito', 'success');
       } else {
-        AppState.products[idx] = { code, description, category, unitType, price, stock, image };
-        showToast('Producto actualizado con éxito', 'success');
+        // Estamos editando: Buscamos la posición real en la lista global usando el código de referencia original
+        const idxGlobal = AppState.products.findIndex(p => String(p.code).trim() === String(refEdit).trim());
+        if (idxGlobal >= 0) {
+          AppState.products[idxGlobal] = { code, brand, description, category, unitType, price, stock, image };
+          showToast('Producto actualizado con éxito', 'success');
+        } else {
+          showToast('Error de sincronización al actualizar el producto.', 'error');
+          return;
+        }
       }
 
       saveStateToLocalStorage();
@@ -2072,19 +2096,28 @@
       renderCatalog();
     }
 
-    function editProduct(idx) {
-      openProductModal(idx);
+    function editProduct(codigoBuscar) {
+      openProductModal(codigoBuscar);
     }
 
-    function deleteProduct(idx) {
-      if (confirm(`¿Eliminar el producto "${AppState.products[idx].description}"?`)) {
-        AppState.products.splice(idx, 1);
+    function deleteProduct(codigoBuscar) {
+      const idxGlobal = AppState.products.findIndex(p => String(p.code).trim() === String(codigoBuscar).trim());
+      
+      if (idxGlobal === -1) {
+        showToast('Error: No se encontró el producto a eliminar.', 'error');
+        return;
+      }
+
+      const prod = AppState.products[idxGlobal];
+      if (confirm(`¿Eliminar el producto "${prod.description}"?`)) {
+        AppState.products.splice(idxGlobal, 1);
         saveStateToLocalStorage();
         renderAdminProductsTable();
         renderCatalog();
         showToast('Producto eliminado', 'info');
       }
     }
+
 
     // CRUD CLIENTES
     function renderAdminClientsTable() {
