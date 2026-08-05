@@ -3350,7 +3350,7 @@ if (existeCategoria) {
       }
     }, 2000); // Monitorea en vivo cada 2 segundos
 
-    // 2. RENDERIZADOR DE LA TABLA HISTÓRICA ACUMULATIVA DE FIN DE MES
+        // 2. RENDERIZADOR DE LA TABLA HISTÓRICA CON BOTONES DE AUDITORÍA (EXCLUSIVO ADMIN)
     function renderHistoricalClosingsTable() {
       const tbody = document.getElementById('adminHistoricalClosingsTableBody');
       if (!tbody) return;
@@ -3358,36 +3358,56 @@ if (existeCategoria) {
       const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
 
       if (listaCierres.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="3" class="p-4 text-center text-slate-500 italic">No hay registros de cierres diarios guardados en la memoria de este terminal.</td>
-          </tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-500 italic">No hay registros de turnos guardados en este terminal.</td></tr>`;
         return;
       }
 
-      let html = listaCierres.map(c => `
-        <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60">
-          <td class="p-3 font-medium text-white text-sm"><i class="fa-solid fa-calendar-day text-slate-500 mr-2"></i>${c.fecha}</td>
-          <td class="p-3 text-center text-slate-300 font-mono">${c.cantidadTickets} tickets emitidos</td>
-          <td class="p-3 text-right font-bold text-emerald-400 text-sm">$${Math.round(c.totalVendido).toLocaleString('es-CL')}</td>
-        </tr>
-      `).join('');
+      // Dibujar cada turno de forma individual corrigiendo el error de celdas 'undefined'
+      let html = listaCierres.map((c, index) => {
+        const boletas = c.amountTickets || c.cantidadTickets || 0;
+        const nombreCajero = c.cajero || 'Cajero General';
+        const fondo = c.fondoInicial || 0;
+        
+        return `
+          <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60 text-xs">
+            <td class="p-3 font-medium text-white text-sm"><i class="fa-solid fa-calendar-day text-slate-500 mr-2"></i>${c.fecha}</td>
+            <td class="p-3 font-semibold text-slate-300 capitalize"><i class="fa-solid fa-user text-[10px] text-slate-500 mr-1"></i>${nombreCajero}</td>
+            <td class="p-3 text-center text-slate-400 font-mono">${boletas} boletas (Fondo: $${fondo.toLocaleString('es-CL')})</td>
+            <td class="p-3 text-right font-bold text-emerald-400 text-sm">$${Math.round(c.totalVendido).toLocaleString('es-CL')}</td>
+            <!-- BOTONES DE AUDITORÍA EXCLUSIVOS PARA TI -->
+            <td class="p-3 text-center no-print">
+              <div class="flex items-center justify-center gap-1.5">
+                <button onclick="auditarReabrirYModificarTurno(${index})" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg border border-slate-700 font-semibold text-[10px] flex items-center gap-1">
+                  <i class="fa-solid fa-folder-open"></i> Reabrir / Modificar
+                </button>
+                <button onclick="eliminarTurnoHistoricoAdmin(${index})" class="p-1 bg-slate-800 hover:bg-red-950/60 text-red-400 rounded-lg border border-slate-700">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
 
-      const totalAcumuladoMes = listaCierres.reduce((acc, c) => acc + c.totalVendido, 0);
-      const totalTicketsMes = listaCierres.reduce((acc, c) => acc + c.cantidadTickets, 0);
+      // Calcular sumatorias finales corrigiendo el error de 'NaN transacciones'
+      const granTotalVentas = listaCierres.reduce((acc, c) => acc + (parseFloat(c.totalVendido) || 0), 0);
+      const granTotalTickets = listaCierres.reduce((acc, c) => acc + (parseInt(c.amountTickets || c.cantidadTickets) || 0), 0);
 
       html += `
         <thead class="bg-slate-950 text-white font-black border-t-2 border-slate-800">
           <tr>
-            <td class="p-3 text-sm text-slate-300">TOTAL ACUMULADO MENSUAL</td>
-            <td class="p-3 text-center text-slate-400 font-mono">${totalTicketsMes} transacciones</td>
-            <td class="p-3 text-right text-base text-emerald-400">$${totalAcumuladoMes.toLocaleString('es-CL')}</td>
+            <td class="p-3 text-xs text-slate-300">TOTAL CONSOLIDADO GENERAL</td>
+            <td class="p-3 text-slate-400">---</td>
+            <td class="p-3 text-center text-slate-400 font-mono">${granTotalTickets} transacciones</td>
+            <td class="p-3 text-right text-base text-emerald-400">$${granTotalVentas.toLocaleString('es-CL')}</td>
+            <td class="p-3"></td>
           </tr>
         </thead>
       `;
 
       tbody.innerHTML = html;
     }
+
 
     // 3. EXPORTADOR A EXCEL EXCLUSIVO PARA EL ADMINISTRADOR (LIBRERÍA SHEETJS)
     function exportarCierresHistoricosAExcel() {
@@ -3587,6 +3607,92 @@ if (existeCategoria) {
 
     // Inicializador visual automático al cargar el backend
     setTimeout(() => { renderAdminUsersTable(); }, 600);
+    /* ==========================================================================
+       CENTRAL DE AUDITORÍA ADMIN: REABRIR, MODIFICAR Y ELIMINAR JORNADAS PASADAS
+       ========================================================================== */
+
+    function auditarReabrirYModificarTurno(index) {
+      const usuarioActual = AppState.currentUser || JSON.parse(localStorage.getItem('tpv_current_user')) || { role: 'cajero' };
+      if (String(usuarioActual.role).toLowerCase() !== 'admin') {
+        alert("🚨 CONTROL ACCESO: Solo el Administrador General puede auditar turnos cerrados.");
+        return;
+      }
+
+      const turno = AppState.dailyClosings[index];
+      
+      const opcion = prompt(
+        `🛠️ AUDITORÍA DE TURNO - FECHA: ${turno.fecha}\nCajero Responsable: ${turno.cajero}\n\nSeleccione una acción escribiendo el número (1, 2 o 3):\n\n[1] Modificar Monto Total de Ventas\n[2] Modificar Fondo de Caja Inicial\n[3] Reabrir este turno completo y devolverlo a la pantalla de ventas activa`
+      );
+
+      if (!opcion) return;
+
+      if (opcion === "1") {
+        const nuevoMonto = prompt(`Monto de venta actual: $${turno.totalVendido}\nIngrese el NUEVO valor real recaudado ($):`, turno.totalVendido);
+        if (nuevoMonto !== null && !isNaN(nuevoMonto)) {
+          turno.totalVendido = Math.round(parseFloat(nuevoMonto)) || 0;
+          alert("✓ Venta modificada con éxito.");
+        }
+      } 
+      else if (opcion === "2") {
+        const nuevoFondo = prompt(`Fondo de caja inicial actual: $${turno.fondoInicial}\nIngrese el NUEVO monto de fondo de caja ($):`, turno.fondoInicial);
+        if (nuevoFondo !== null && !isNaN(nuevoFondo)) {
+          turno.fondoInicial = parseFloat(nuevoFondo) || 0;
+          alert("✓ Fondo inicial de caja actualizado.");
+        }
+      } 
+      else if (opcion === "3") {
+        if (confirm(`⚠️ ALERTA DE REAPERTURA\n\n¿Está seguro de reabrir el turno de "${turno.cajero}" del día ${turno.fecha}?\n\nEsto inyectará los movimientos de vuelta en el monitor de ventas activo para que puedas eliminar boletas o anular transacciones.`)) {
+          
+          // Clonamos la información de vuelta al estado activo de caja del TPV
+          AppState.shiftStatus = 'OPEN';
+          localStorage.setItem('tpv_shift_status', 'OPEN');
+          localStorage.setItem('tpv_last_active_date', turno.fecha);
+          
+          // Removemos el turno del histórico consolidado temporalmente para evitar duplicados al re-cerrar
+          AppState.dailyClosings.splice(index, 1);
+          localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+          
+          alert("🔓 Turno restaurado con éxito. Diríjase a la pestaña 'Historial y Caja' en el menú superior para eliminar o corregir las boletas en el panel activo.");
+        }
+      } else {
+        alert("Opción no válida.");
+      }
+
+      // Guardar cambios en el almacenamiento y redibujar la tabla
+      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      renderHistoricalClosingsTable();
+      if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+    }
+
+    function eliminarTurnoHistoricoAdmin(index) {
+      const turno = AppState.dailyClosings[index];
+      if (!confirm(`🚨 ATENCIÓN ADMINISTRADOR: ¿Está seguro de eliminar permanentemente del historial el turno de "${turno.cajero}" del día ${turno.fecha}?\n\nEsta acción no se puede deshacer.`)) {
+        return;
+      }
+
+      AppState.dailyClosings.splice(index, 1);
+      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+      renderHistoricalClosingsTable();
+      showToast('Turno histórico eliminado con éxito', 'info');
+    }
+
+    // LÍNEAS DE LIMPIEZA AUTOMÁTICA EN CALIENTE PARA BORRAR LOS RESTRÓS VIEJOS 'UNDEFINED' DE LA CACHÉ
+    setTimeout(() => {
+      if (AppState.dailyClosings && AppState.dailyClosings.length > 0) {
+        let huboCambio = false;
+        AppState.dailyClosings.forEach(c => {
+          if (c.cantidadTickets === undefined && c.amountTickets === undefined) {
+            c.cantidadTickets = 0;
+            huboCambio = true;
+          }
+        });
+        if (huboCambio) {
+          localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+          renderHistoricalClosingsTable();
+        }
+      }
+    }, 1200);
 
   </script>
 </body>
