@@ -358,7 +358,7 @@
         </div>
       </div>
 
-      <!-- PESTAÑA ADMIN INYECTADA: ACUMULADO CONSOLIDADO POR TURNO (CON CANDADO ABSOLUTO POR ROL) -->
+     <!-- PESTAÑA ADMIN INYECTADA: ACUMULADO CONSOLIDADO POR TURNO (CON CANDADO ABSOLUTO POR ROL) -->
       <div id="adminHistoricalClosingsSection" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 mt-2">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
@@ -367,6 +367,41 @@
             </h3>
             <p class="text-xs text-slate-400 mt-1">Resumen individual de jornadas anteriores para auditoría y control de fin de mes.</p>
           </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA ADMIN SECUNDARIA INYECTADA: GESTIÓN AVANZADA DE USUARIOS, CONTRASENAS Y PERMISOS -->
+      <div id="adminUserManagementSection" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-4 mt-2 no-print">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h3 class="font-bold text-white text-base flex items-center gap-2">
+              <i class="fa-solid fa-users-gear text-blue-400"></i> Gestión de Personal, Claves y Permisos
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">Crea cajeros, actualiza contraseñas de seguridad de forma inmediata y audita accesos.</p>
+          </div>
+          <button onclick="abrirModalNuevoUsuarioAdmin()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-user-plus"></i> Registrar Personal
+          </button>
+        </div>
+
+        <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left border-collapse text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
+              <tr>
+                <th class="p-3">Nombre Completo</th>
+                <th class="p-3">Usuario Logín</th>
+                <th class="p-3 text-center">Rol / Perfil</th>
+                <th class="p-3 text-center">Permisos POS</th>
+                <th class="p-3 text-center w-36">Acciones de Seguridad</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody">
+              <!-- Se rellena automáticamente con JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
           <!-- BOTÓN EXPORTAR EXCEL HISTÓRICO EXCLUSIVO PARA EL ADMINISTRADOR -->
           <button onclick="exportarCierresHistoricosAExcel()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
             <i class="fa-solid fa-file-excel"></i> Exportar Histórico Mensual
@@ -3399,6 +3434,167 @@ if (existeCategoria) {
     setTimeout(() => { if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable(); }, 800);
 
     
+    /* ==========================================================================
+       MOTOR MAESTRO: GESTIÓN DE PERSONAL, MANTENIMIENTO ADMIN Y MULTI-TURNO
+       ========================================================================== */
+
+    // 1. CUSTODIO DE NAVEGACIÓN Y PERMISOS EN TIEMPO REAL
+    setInterval(() => {
+      if (!AppState) return;
+
+      // Obtener el perfil logueado actualmente en la sesión del equipo
+      const usuarioLogueado = AppState.currentUser || JSON.parse(localStorage.getItem('tpv_current_user')) || { username: 'invitado', role: 'cajero' };
+      const esAdmin = String(usuarioLogueado.role).toLowerCase() === 'admin';
+
+      // CONTROL DE VISIBILIDAD DE SECCIONES CRÍTICAS (OCULTAMIENTO EXTREMO)
+      const seccionHistorico = document.getElementById('adminHistoricalClosingsSection');
+      const seccionPersonal = document.getElementById('adminUserManagementSection');
+
+      if (seccionHistorico) esAdmin ? seccionHistorico.classList.remove('hidden') : seccionHistorico.classList.add('hidden');
+      if (seccionPersonal) esAdmin ? seccionPersonal.classList.remove('hidden') : seccionPersonal.classList.add('hidden');
+
+      // 2. PARCHE PASALIBRE ADMINISTRADOR: Permite al Admin auditar y hacer mantención sin abrir caja
+      if (esAdmin) {
+        // Habilitamos físicamente todas las pestañas de administración del archivo index
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.disabled = false);
+        // Removemos bloqueos en formularios de productos y configuraciones
+        const formProd = document.getElementById('productCrudForm');
+        if (formProd) formProd.classList.remove('pointer-events-none', 'opacity-50');
+      }
+
+      // 3. REINICIO DE FECHA AUTOMÁTICO EN LA MADRUGADA
+      const reloj = new Date();
+      const fechaHoyFormato = reloj.getDate().toString().padStart(2, '0') + '-' + (reloj.getMonth() + 1).toString().padStart(2, '0') + '-' + reloj.getFullYear();
+      const ultimaFechaActiva = localStorage.getItem('tpv_last_active_date') || fechaHoyFormato;
+
+      if (ultimaFechaActiva !== fechaHoyFormato) {
+        const historialActivo = AppState.salesHistory || [];
+        if (historialActivo.length > 0) {
+          const totalVentaCajaVieja = historialActivo.reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0);
+          if (!AppState.dailyClosings) AppState.dailyClosings = [];
+          
+          AppState.dailyClosings.push({
+            fecha: ultimaFechaActiva,
+            cajero: "Cierre Automático Nocturno",
+            fondoInicial: 0,
+            totalVendido: Math.round(totalVentaCajaVieja),
+            amountTickets: historialActivo.length
+          });
+          localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+        }
+
+        AppState.salesHistory = [];
+        localStorage.setItem('tpv_sales_history', JSON.stringify([]));
+        localStorage.setItem('tpv_shift_status', 'OPEN'); // El cajero de la mañana inicia en cero autónomo
+        localStorage.setItem('tpv_last_active_date', fechaHoyFormato);
+
+        if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+        if (typeof renderSalesHistory === 'function') renderSalesHistory();
+        if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
+      }
+    }, 2000);
+
+    // 2. DIBUJAR LA TABLA DE USUARIOS Y CRUDS DE SEGURIDAD
+    function renderAdminUsersTable() {
+      const tbody = document.getElementById('adminUsersTableBody');
+      if (!tbody) return;
+
+      // Inicializar lista maestra en la memoria si no existe
+      if (!AppState.users || AppState.users.length === 0) {
+        AppState.users = [
+          { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', password: '9999', canSell: true },
+          { id: '2', name: 'Cajero Turno Mañana', username: 'cajero1', role: 'cajero', password: '1111', canSell: true }
+        ];
+      }
+
+      tbody.innerHTML = AppState.users.map((u, index) => `
+        <tr class="hover:bg-slate-800/40 transition-colors border-b border-slate-800/60 text-xs">
+          <td class="p-3 font-medium text-white text-sm"><i class="fa-solid fa-user text-slate-500 mr-2"></i>${u.name}</td>
+          <td class="p-3 font-mono text-slate-300">${u.username}</td>
+          <td class="p-3 text-center">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'admin' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'} uppercase">
+              ${u.role}
+            </span>
+          </td>
+          <td class="p-3 text-center text-slate-400">
+            ${u.role === 'admin' ? 'Acceso Total a Sistemas' : '<span class="text-emerald-400 font-medium">Solo Facturación POS</span>'}
+          </td>
+          <td class="p-3 text-center">
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="cambiarClaveUsuarioAdmin(${index})" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg border border-slate-700 font-semibold text-[10px] flex items-center gap-1">
+                <i class="fa-solid fa-key"></i> Clave
+              </button>
+              ${u.username !== 'admin' ? `
+                <button onclick="eliminarUsuarioAdmin(${index})" class="p-1 bg-slate-800 hover:bg-red-950/60 text-red-400 rounded-lg border border-slate-700">
+                  <i class="fa-solid fa-user-xmark"></i>
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function abrirModalNuevoUsuarioAdmin() {
+      const nombre = prompt("Nombre completo del nuevo trabajador:");
+      if (!nombre || nombre.trim() === "") return;
+      const userLogin = prompt("Nombre de usuario para el Login (Ej: mara123):").trim().toLowerCase();
+      if (!userLogin) return;
+
+      if (AppState.users.some(u => u.username === userLogin)) {
+        alert("Este nombre de usuario ya está registrado en el TPV.");
+        return;
+      }
+
+      const clave = prompt("Asigne una contraseña numérica o alfa-numérica inicial:");
+      if (!clave) return;
+
+      const tipoRol = confirm("¿Este usuario será ADMINISTRADOR?\n\n(Aceptar = Administrador / Cancelar = Cajero Operativo)") ? 'admin' : 'cajero';
+
+      AppState.users.push({
+        id: Date.now().toString(),
+        name: nombre.trim(),
+        username: userLogin,
+        role: tipoRol,
+        password: clave.trim(),
+        canSell: true
+      });
+
+      localStorage.setItem('tpv_users', JSON.stringify(AppState.users));
+      renderAdminUsersTable();
+      alert(`¡Usuario ${userLogin} registrado con éxito con el perfil de ${tipoRol.toUpperCase()}!`);
+    }
+
+    function cambiarClaveUsuarioAdmin(index) {
+      const u = AppState.users[index];
+      const nuevaClave = prompt(`MEDIDA DE SEGURIDAD EXTREMA\n\nModificar contraseña para el usuario: ${u.username}\n\nIngrese la nueva clave de seguridad:`);
+      if (!nuevaClave || nuevaClave.trim() === "") return;
+
+      u.password = nuevaClave.trim();
+      localStorage.setItem('tpv_users', JSON.stringify(AppState.users));
+      
+      // Sincronizar de inmediato si el administrador se cambió su propia contraseña activa
+      const currentSession = JSON.parse(localStorage.getItem('tpv_current_user')) || {};
+      if (currentSession.username === u.username) {
+        currentSession.password = u.password;
+        localStorage.setItem('tpv_current_user', JSON.stringify(currentSession));
+      }
+
+      renderAdminUsersTable();
+      alert(`🔒 Contraseña para "${u.username}" actualizada e inyectada con éxito.`);
+    }
+
+    function eliminarUsuarioAdmin(index) {
+      const u = AppState.users[index];
+      if (!confirm(`¿Está seguro de revocar los accesos y eliminar permanentemente al trabajador "${u.name}" del sistema?`)) return;
+
+      AppState.users.splice(index, 1);
+      localStorage.setItem('tpv_users', JSON.stringify(AppState.users));
+      renderAdminUsersTable();
+    }
+
+    // Inicializador visual automático al cargar el backend
+    setTimeout(() => { renderAdminUsersTable(); }, 600);
 
   </script>
 </body>
