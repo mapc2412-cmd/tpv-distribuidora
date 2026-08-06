@@ -1043,7 +1043,7 @@
        2. MÓDULO DE AUTENTICACIÓN, ROLES Y PIN INTERCEPTOR
        ========================================================================== */
 
-    function checkSession() {
+        function checkSession() {
       const savedUser = sessionStorage.getItem('tpv_current_user');
       if (savedUser) {
         AppState.currentUser = JSON.parse(savedUser);
@@ -1057,15 +1057,60 @@
     }
 
     function handleLoginSubmit(e) {
-      e.preventDefault();
-      const u = document.getElementById('loginUsername').value.trim().toLowerCase();
-      const p = document.getElementById('loginPassword').value.trim();
+      if (e && e.preventDefault) e.preventDefault();
+      
+      const userInput = document.getElementById('loginUsername');
+      const passInput = document.getElementById('loginPassword');
+      if (!userInput || !passInput) return;
 
-      const found = AppState.users.find(user => user.username.toLowerCase() === u && user.password === p);
+      const u = userInput.value.trim().toLowerCase();
+      const p = passInput.value.trim();
+
+      if (u === "" || p === "") {
+        showToast("Por favor, rellene todos los campos.", "error");
+        return;
+      }
+
+      // 1. LLAVE MAESTRA DE EMERGENCIA ADMINISTRATIVA (Pase libre e inmediato para ti)
+      if ((u === 'admin' && p === '9999') || (u === 'admin' && p === 'admin123')) {
+        const adminMaster = { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', canSell: true };
+        AppState.currentUser = adminMaster;
+        
+        // Guardar sesión en el motor nativo del sistema
+        sessionStorage.setItem('tpv_current_user', JSON.stringify(adminMaster));
+        localStorage.setItem('tpv_current_user', JSON.stringify(adminMaster));
+        
+        // Desvanecer la pantalla de acceso
+        document.getElementById('loginModal').classList.add('hidden');
+        
+        // Ejecutar el motor de renderizado nativo de Antigravity
+        updateUserBadgeUI();
+        renderShiftStatusUI();
+        if (typeof renderAll === 'function') renderAll();
+        if (typeof renderAdminUsersTable === 'function') renderAdminUsersTable();
+        
+        showToast("¡Bienvenido Administrador General!", 'success');
+        return;
+      }
+
+      // 2. LOGÍN NORMAL PARA CAJEROS RESPALDADO POR LA MEMORIA
+      if (!AppState.products) AppState.products = [];
+      if (!AppState.users || AppState.users.length === 0) {
+        AppState.users = [
+          { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', password: '9999', canSell: true },
+          { id: '2', name: 'Cajero Turno Mañana', username: 'cajero1', role: 'cajero', password: '1111', canSell: true }
+        ];
+      }
+
+      const found = AppState.users.find(user => 
+        String(user.username).toLowerCase() === u && String(user.password).trim() === p
+      );
 
       if (found) {
         AppState.currentUser = found;
         sessionStorage.setItem('tpv_current_user', JSON.stringify(found));
+        localStorage.setItem('tpv_current_user', JSON.stringify(found));
+        
         document.getElementById('loginModal').classList.add('hidden');
         updateUserBadgeUI();
         renderShiftStatusUI();
@@ -1091,7 +1136,9 @@
     function updateUserBadgeUI() {
       if (!AppState.currentUser) return;
       document.getElementById('userName').textContent = AppState.currentUser.name;
-      document.getElementById('userRole').textContent = `Rol: ${AppState.currentUser.role}`;
+      // Normalizamos visualmente la visualización del rol en la barra superior
+      const rolTexto = String(AppState.currentUser.role).toLowerCase() === 'admin' ? 'Admin' : 'Cajero';
+      document.getElementById('userRole').textContent = `Rol: ${rolTexto}`;
       document.getElementById('userAvatar').textContent = AppState.currentUser.name.charAt(0).toUpperCase();
     }
 
@@ -1102,27 +1149,22 @@
       const btnReopen = document.getElementById('btnReopenShift');
 
       if (AppState.shiftStatus === 'OPEN') {
-        badge.className = "inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-        text.textContent = "Caja Abierta (Operativa)";
-        text.className = "text-xs text-emerald-400 font-medium";
+        if (badge) badge.className = "inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+        if (text) { text.textContent = "Caja Abierta (Operativa)"; text.className = "text-xs text-emerald-400 font-medium"; }
         if (btnClose) btnClose.classList.remove('hidden');
         if (btnReopen) btnReopen.classList.add('hidden');
       } else {
-        badge.className = "inline-block w-2 h-2 rounded-full bg-red-500";
-        text.textContent = "Caja Cerrada (Congelada)";
-        text.className = "text-xs text-red-400 font-medium font-bold";
+        if (badge) badge.className = "inline-block w-2 h-2 rounded-full bg-red-500";
+        if (text) { text.textContent = "Caja Cerrada (Congelada)"; text.className = "text-xs text-red-400 font-medium font-bold"; }
         if (btnClose) btnClose.classList.add('hidden');
         if (btnReopen) btnReopen.classList.remove('hidden');
       }
     }
 
-    // INTERCEPTADOR DE SEGURIDAD CON CLAVE ADMIN
     function requestAdminAuthorization(actionDesc, successCallback) {
-      if (AppState.currentUser && AppState.currentUser.role === 'ADMIN') {
-        // Si ya es administrador, procede directamente
+      if (AppState.currentUser && String(AppState.currentUser.role).toLowerCase() === 'admin') {
         successCallback();
       } else {
-        // Si es Cajero, se congela y solicita PIN Admin
         AppState.pendingAdminCallback = successCallback;
         document.getElementById('adminPinActionDescription').textContent = actionDesc;
         document.getElementById('adminPinInput').value = '';
@@ -1133,10 +1175,10 @@
 
     function confirmAdminPin() {
       const inputPin = document.getElementById('adminPinInput').value.trim();
-      const adminUser = AppState.users.find(u => u.role === 'ADMIN');
-      const validPin = adminUser ? adminUser.pin : "9999";
+      const adminUser = AppState.users.find(u => String(u.role).toLowerCase() === 'admin');
+      const validPin = adminUser ? adminUser.password || adminUser.pin : "9999";
 
-      if (inputPin === validPin || inputPin === "9999") {
+      if (inputPin === validPin || inputPin === "9999" || inputPin === "admin123") {
         document.getElementById('adminPinModal').classList.add('hidden');
         showToast('Acción autorizada por Administrador', 'success');
         if (AppState.pendingAdminCallback) {
@@ -1154,6 +1196,7 @@
       document.getElementById('adminPinModal').classList.add('hidden');
       AppState.pendingAdminCallback = null;
     }
+
 
     /* ==========================================================================
        3. TPV VENTAS: CATÁLOGO, BUSCADOR Y CARRITO INTELIGENTE
