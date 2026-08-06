@@ -1043,16 +1043,24 @@
        2. MÓDULO DE AUTENTICACIÓN, ROLES Y PIN INTERCEPTOR
        ========================================================================== */
 
-        function checkSession() {
-      const savedUser = sessionStorage.getItem('tpv_current_user');
+    function checkSession() {
+      // Intenta leer la sesión tanto de la memoria del navegador como del disco duro
+      const savedUser = sessionStorage.getItem('tpv_current_user') || localStorage.getItem('tpv_current_user');
+      
       if (savedUser) {
         AppState.currentUser = JSON.parse(savedUser);
-        document.getElementById('loginModal').classList.add('hidden');
+        const loginModal = document.getElementById('loginModal');
+        if (loginModal) {
+          loginModal.classList.add('hidden');
+        }
         updateUserBadgeUI();
         renderShiftStatusUI();
-        renderAll();
+        if (typeof renderAll === 'function') renderAll();
       } else {
-        document.getElementById('loginModal').classList.remove('hidden');
+        const loginModal = document.getElementById('loginModal');
+        if (loginModal) {
+          loginModal.classList.remove('hidden');
+        }
       }
     }
 
@@ -1076,14 +1084,14 @@
         const adminMaster = { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', canSell: true };
         AppState.currentUser = adminMaster;
         
-        // Guardar sesión en el motor nativo del sistema
+        // Guardar sesión de forma segura y cruzada en el motor para evitar desajustes
         sessionStorage.setItem('tpv_current_user', JSON.stringify(adminMaster));
         localStorage.setItem('tpv_current_user', JSON.stringify(adminMaster));
         
         // Desvanecer la pantalla de acceso
         document.getElementById('loginModal').classList.add('hidden');
         
-        // Ejecutar el motor de renderizado nativo de Antigravity
+        // Ejecutar el motor de renderizado nativo de la aplicación
         updateUserBadgeUI();
         renderShiftStatusUI();
         if (typeof renderAll === 'function') renderAll();
@@ -1093,16 +1101,13 @@
         return;
       }
 
-      // 2. LOGÍN NORMAL PARA CAJEROS RESPALDADO POR LA MEMORIA
-      if (!AppState.products) AppState.products = [];
-      if (!AppState.users || AppState.users.length === 0) {
-        AppState.users = [
-          { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', password: '9999', canSell: true },
-          { id: '2', name: 'Cajero Turno Mañana', username: 'cajero1', role: 'cajero', password: '1111', canSell: true }
-        ];
-      }
+      // 2. LOGÍN NORMAL RESPALDADO POR LA BASE DE DATOS LOCAL
+      const localUsers = JSON.parse(localStorage.getItem('tpv_users')) || [
+        { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', password: '9999', canSell: true },
+        { id: '2', name: 'Cajero Turno Mañana', username: 'cajero1', role: 'cajero', password: '1111', canSell: true }
+      ];
 
-      const found = AppState.users.find(user => 
+      const found = localUsers.find(user => 
         String(user.username).toLowerCase() === u && String(user.password).trim() === p
       );
 
@@ -1114,7 +1119,7 @@
         document.getElementById('loginModal').classList.add('hidden');
         updateUserBadgeUI();
         renderShiftStatusUI();
-        renderAll();
+        if (typeof renderAll === 'function') renderAll();
         showToast(`Bienvenido ${found.name}`, 'success');
       } else {
         showToast('Credenciales inválidas. Verifica usuario y contraseña.', 'error');
@@ -1122,24 +1127,34 @@
     }
 
     function fillLoginCredentials(user, pass) {
-      document.getElementById('loginUsername').value = user;
-      document.getElementById('loginPassword').value = pass;
+      if (document.getElementById('loginUsername')) document.getElementById('loginUsername').value = user;
+      if (document.getElementById('loginPassword')) document.getElementById('loginPassword').value = pass;
     }
 
     function logout() {
       sessionStorage.removeItem('tpv_current_user');
+      localStorage.removeItem('tpv_current_user');
       AppState.currentUser = null;
-      document.getElementById('loginModal').classList.remove('hidden');
+      const loginModal = document.getElementById('loginModal');
+      if (loginModal) {
+        loginModal.classList.remove('hidden');
+      }
       showToast('Sesión cerrada correctamente.', 'info');
     }
 
     function updateUserBadgeUI() {
       if (!AppState.currentUser) return;
-      document.getElementById('userName').textContent = AppState.currentUser.name;
+      
+      const nameEl = document.getElementById('userName');
+      const roleEl = document.getElementById('userRole');
+      const avatarEl = document.getElementById('userAvatar');
+      
+      if (nameEl) nameEl.textContent = AppState.currentUser.name;
+      
       // Normalizamos visualmente la visualización del rol en la barra superior
       const rolTexto = String(AppState.currentUser.role).toLowerCase() === 'admin' ? 'Admin' : 'Cajero';
-      document.getElementById('userRole').textContent = `Rol: ${rolTexto}`;
-      document.getElementById('userAvatar').textContent = AppState.currentUser.name.charAt(0).toUpperCase();
+      if (roleEl) roleEl.textContent = `Rol: ${rolTexto}`;
+      if (avatarEl) avatarEl.textContent = AppState.currentUser.name.charAt(0).toUpperCase();
     }
 
     function renderShiftStatusUI() {
@@ -1166,16 +1181,24 @@
         successCallback();
       } else {
         AppState.pendingAdminCallback = successCallback;
-        document.getElementById('adminPinActionDescription').textContent = actionDesc;
-        document.getElementById('adminPinInput').value = '';
-        document.getElementById('adminPinModal').classList.remove('hidden');
-        setTimeout(() => document.getElementById('adminPinInput').focus(), 100);
+        const descEl = document.getElementById('adminPinActionDescription');
+        const inputEl = document.getElementById('adminPinInput');
+        const modalEl = document.getElementById('adminPinModal');
+        
+        if (descEl) descEl.textContent = actionDesc;
+        if (inputEl) inputEl.value = '';
+        if (modalEl) modalEl.classList.remove('hidden');
+        
+        setTimeout(() => {
+          if (inputEl) inputEl.focus();
+        }, 100);
       }
     }
 
     function confirmAdminPin() {
       const inputPin = document.getElementById('adminPinInput').value.trim();
-      const adminUser = AppState.users.find(u => String(u.role).toLowerCase() === 'admin');
+      const localUsers = JSON.parse(localStorage.getItem('tpv_users')) || SEED_USERS;
+      const adminUser = localUsers.find(u => String(u.role).toLowerCase() === 'admin');
       const validPin = adminUser ? adminUser.password || adminUser.pin : "9999";
 
       if (inputPin === validPin || inputPin === "9999" || inputPin === "admin123") {
@@ -1188,7 +1211,8 @@
         }
       } else {
         showToast('PIN de Administrador incorrecto.', 'error');
-        document.getElementById('adminPinInput').focus();
+        const inputEl = document.getElementById('adminPinInput');
+        if (inputEl) inputEl.focus();
       }
     }
 
@@ -1196,6 +1220,7 @@
       document.getElementById('adminPinModal').classList.add('hidden');
       AppState.pendingAdminCallback = null;
     }
+
 
 
     /* ==========================================================================
@@ -1522,11 +1547,11 @@
     }
 
     /* ==========================================================================
-       4. PROCESO DE FACTURACIÓN, COBRO Y REGLA POST-VENTA
+       4. PROCESO DE FACTURACIÓN, COBRO Y REGLA POST-VENTA (CORREGIDO)
        ========================================================================== */
 
     function processCheckout() {
-      if (AppState.cart.length === 0) {
+      if (!AppState.cart || AppState.cart.length === 0) {
         showToast('Añade al menos un producto al carrito antes de cobrar.', 'warning');
         return;
       }
@@ -1536,37 +1561,49 @@
         return;
       }
 
-      const clientRut = document.getElementById('cartClientSelect').value;
-      const clientObj = AppState.clients.find(c => c.rut === clientRut);
+      const clientSelect = document.getElementById('cartClientSelect');
+      const clientRut = clientSelect ? clientSelect.value : '';
+      const clientObj = (AppState.clients || []).find(c => c.rut === clientRut);
       const clientName = clientObj ? clientObj.name : "Cliente Final";
 
       const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
       const itemsCount = AppState.cart.reduce((acc, i) => acc + (i.unitType === 'kg' ? 1 : i.qty), 0);
 
-      document.getElementById('modalCheckoutClient').textContent = clientName;
-      document.getElementById('modalCheckoutPayment').textContent = AppState.selectedPaymentMethod;
-      document.getElementById('modalCheckoutItemsCount').textContent = itemsCount;
-      document.getElementById('modalCheckoutTotal').textContent = `$${Math.round(total).toLocaleString('es-CL')}`;
+      const modalClient = document.getElementById('modalCheckoutClient');
+      const modalPayment = document.getElementById('modalCheckoutPayment');
+      const modalCount = document.getElementById('modalCheckoutItemsCount');
+      const modalTotal = document.getElementById('modalCheckoutTotal');
 
-      // Configuración sección efectivo
+      if (modalClient) modalClient.textContent = clientName;
+      if (modalPayment) modalPayment.textContent = AppState.selectedPaymentMethod;
+      if (modalCount) modalCount.textContent = itemsCount;
+      if (modalTotal) modalTotal.textContent = `$${Math.round(total).toLocaleString('es-CL')}`;
+
+      // Configuración sección efectivo con validación de existencia de elementos en pantalla
       const cashSec = document.getElementById('cashChangeSection');
       if (AppState.selectedPaymentMethod === 'Efectivo') {
-        cashSec.classList.remove('hidden');
-        document.getElementById('modalCashReceivedInput').value = Math.round(total);
+        if (cashSec) cashSec.classList.remove('hidden');
+        const cashInput = document.getElementById('modalCashReceivedInput');
+        if (cashInput) cashInput.value = Math.round(total);
         calculateCashChange();
       } else {
-        cashSec.classList.add('hidden');
+        if (cashSec) cashSec.classList.add('hidden');
       }
 
-      document.getElementById('checkoutModal').classList.remove('hidden');
+      const checkoutModal = document.getElementById('checkoutModal');
+      if (checkoutModal) checkoutModal.classList.remove('hidden');
     }
 
     function calculateCashChange() {
+      if (!AppState.cart) return;
       const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
-      const rec = parseFloat(document.getElementById('modalCashReceivedInput').value) || 0;
+      const cashInput = document.getElementById('modalCashReceivedInput');
+      const rec = cashInput ? (parseFloat(cashInput.value) || 0) : 0;
       const change = rec - total;
       
       const changeEl = document.getElementById('modalCashChangeText');
+      if (!changeEl) return;
+
       if (change >= 0) {
         changeEl.textContent = `$${Math.round(change).toLocaleString('es-CL')}`;
         changeEl.className = "w-full bg-slate-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-sm text-emerald-400 font-extrabold";
@@ -1577,25 +1614,29 @@
     }
 
     function closeCheckoutModal() {
-      document.getElementById('checkoutModal').classList.add('hidden');
+      const checkoutModal = document.getElementById('checkoutModal');
+      if (checkoutModal) checkoutModal.classList.add('hidden');
     }
 
     function executeFinalCheckout() {
+      if (!AppState.cart) return;
       const total = AppState.cart.reduce((acc, i) => acc + i.subtotal, 0);
 
       if (AppState.selectedPaymentMethod === 'Efectivo') {
-        const rec = parseFloat(document.getElementById('modalCashReceivedInput').value) || 0;
+        const cashInput = document.getElementById('modalCashReceivedInput');
+        const rec = cashInput ? (parseFloat(cashInput.value) || 0) : 0;
         if (rec < total) {
           showToast('El monto entregado es menor al total a cobrar.', 'error');
           return;
         }
       }
 
-      const clientRut = document.getElementById('cartClientSelect').value;
-      const clientObj = AppState.clients.find(c => c.rut === clientRut);
+      const clientSelect = document.getElementById('cartClientSelect');
+      const clientRut = clientSelect ? clientSelect.value : '';
+      const clientObj = (AppState.clients || []).find(c => c.rut === clientRut);
 
-      // Folio correlativo
-      const nextFolio = AppState.salesHistory.length + 1001;
+      // Folio correlativo automático
+      const nextFolio = (AppState.salesHistory || []).length + 1001;
       const saleRecord = {
         folio: `T-${nextFolio}`,
         timestamp: new Date().toISOString(),
@@ -1610,33 +1651,51 @@
         total: total
       };
 
-      // 1. Descontar Stock en Inventario
+      // 1. Descontar Stock en Inventario de forma segura
       saleRecord.items.forEach(item => {
-        const prod = AppState.products.find(p => p.code === item.productCode);
+        const prod = (AppState.products || []).find(p => p.code === item.productCode);
         if (prod) {
-          prod.stock = Math.max(0, prod.stock - item.qty);
+          prod.stock = Math.max(0, parseFloat(prod.stock || 0) - parseFloat(item.qty || 0));
         }
       });
 
       // 2. Guardar en Historial de Ventas
+      if (!AppState.salesHistory) AppState.salesHistory = [];
       AppState.salesHistory.unshift(saleRecord);
       saveStateToLocalStorage();
 
       // 3. Generar Ticket Térmico e Imprimir
-      generatePrintableTicket(saleRecord);
-      document.getElementById('checkoutModal').classList.add('hidden');
+      if (typeof generatePrintableTicket === 'function') {
+        generatePrintableTicket(saleRecord);
+      }
       
-      window.print(); // Lanzar vista previa de impresión estándar de navegador
+      const checkoutModal = document.getElementById('checkoutModal');
+      if (checkoutModal) checkoutModal.classList.add('hidden');
+      
+      window.print(); // Lanzar la orden de impresión nativa del equipo
 
-      // 4. REGLA POST-VENTA ESTRICTA (CORREGIDA): Limpieza diferida para evitar ticket en blanco
+      // 4. REGLA POST-VENTA DIFERIDA OPTIMIZADA: Limpia la pantalla después de procesar la cola
       setTimeout(() => {
         AppState.cart = [];
-        document.getElementById('cartClientSelect').value = ""; // Limpiar a Cliente Final
-        renderCartUI();
-        renderCatalog();
+        
+        const cSelect = document.getElementById('cartClientSelect');
+        const cSearchInput = document.getElementById('posClientSearchInput');
+        const btnClear = document.getElementById('btnClearPosClient');
+        
+        if (cSelect) cSelect.value = "";
+        if (cSearchInput) {
+          cSearchInput.value = "";
+          cSearchInput.readOnly = false; // Descongela el teclado
+        }
+        if (btnClear) btnClear.classList.add('hidden');
+        
+        if (typeof renderCartUI === 'function') renderCartUI();
+        if (typeof renderCatalog === 'function') renderCatalog();
+        
         showToast(`¡Venta #${saleRecord.folio} registrada exitosamente!`, 'success');
-      }, 800); // Retrasa la limpieza 800 milisegundos para dar tiempo a la cola de impresión
+      }, 800);
     }
+
 
     /* ==========================================================================
        5. FORMATO E IMPRESIÓN DE TICKET TÉRMICO DE CAJA
@@ -3254,7 +3313,7 @@ if (existeCategoria) {
       }
     }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
     /* ==========================================================================
-       SISTEMA DE BUSCADOR PREDICTIVO DE CLIENTES Y EXPANSOR DE CARRITO (45%)
+       SISTEMA DE BUSCADOR PREDICTIVO DE CLIENTES Y EXPANSOR DE CARRITO (45%) - CORREGIDO
        ========================================================================== */
 
     // Escuchar la escritura en caliente del teclado sobre el nuevo buscador
@@ -3276,7 +3335,8 @@ if (existeCategoria) {
       if (valor === "") {
         suggestions.classList.add('hidden');
         if (btnClear) btnClear.classList.add('hidden');
-        document.getElementById('cartClientSelect').value = ""; // Venta general nativa
+        const hiddenSelect = document.getElementById('cartClientSelect');
+        if (hiddenSelect) hiddenSelect.value = ""; // Venta general nativa
         return;
       }
 
@@ -3294,9 +3354,9 @@ if (existeCategoria) {
         return;
       }
 
-      // Dibujar la lista desplegable flotante de coincidencias
+      // CORRECCIÓN EN CALIENTE: Pasamos c.rut como identificador en lugar de c.id para acoplar con executeFinalCheckout
       suggestions.innerHTML = clientesFiltrados.map(c => `
-        <div onclick="seleccionarClientePOS('${c.id}', '${c.name}', '${c.rut || ''}')" 
+        <div onclick="seleccionarClientePOS('${c.rut || ''}', '${c.name}', '${c.rut || ''}')" 
              class="p-2.5 hover:bg-emerald-600 hover:text-white cursor-pointer transition-colors border-b border-slate-800/60 flex justify-between items-center gap-2">
           <span class="font-semibold text-white">${c.name}</span>
           <span class="text-[10px] text-slate-400 font-mono">${c.rut || 'Sin RUT'}</span>
@@ -3307,23 +3367,41 @@ if (existeCategoria) {
     }
 
     function seleccionarClientePOS(id, nombre, rut) {
-      // Sincronizamos el ID del cliente seleccionado con el motor nativo del TPV para que salga en la boleta
-      document.getElementById('cartClientSelect').value = id;
+      // Sincronizamos el RUT del cliente seleccionado con el motor oculto para evitar el error de coincidencia
+      const hiddenSelect = document.getElementById('cartClientSelect');
+      if (hiddenSelect) {
+        hiddenSelect.value = rut || id || '';
+      }
       
-      // Mostrar estéticamente el nombre en el cuadro
-      document.getElementById('posClientSearchInput').value = rut ? `${nombre} (${rut})` : nombre;
-      document.getElementById('posClientSearchInput').readOnly = true; // Congelar visualmente
+      // Mostrar estéticamente el nombre en el cuadro del panel del 45%
+      const inputSearch = document.getElementById('posClientSearchInput');
+      if (inputSearch) {
+        inputSearch.value = rut ? `${nombre} (${rut})` : nombre;
+        inputSearch.readOnly = true; // Congelar visualmente para proteger la transacción
+      }
 
-      document.getElementById('posClientSuggestions').classList.add('hidden');
+      const suggestions = document.getElementById('posClientSuggestions');
+      if (suggestions) suggestions.classList.add('hidden');
+      
+      showToast(`Cliente vinculado: ${nombre}`, 'success');
     }
 
     function desvincularClientePOS() {
-      // Regresar al estado predeterminado de Venta General (Cliente Final)
-      document.getElementById('cartClientSelect').value = "";
-      document.getElementById('posClientSearchInput').value = "";
-      document.getElementById('posClientSearchInput').readOnly = false;
-      document.getElementById('posClientSuggestions').classList.add('hidden');
-      if (document.getElementById('btnClearPosClient')) document.getElementById('btnClearPosClient').classList.add('hidden');
+      // Regresar al estado predeterminado de Venta General (Cliente Final) de forma segura
+      const hiddenSelect = document.getElementById('cartClientSelect');
+      const inputSearch = document.getElementById('posClientSearchInput');
+      const suggestions = document.getElementById('posClientSuggestions');
+      const btnClear = document.getElementById('btnClearPosClient');
+
+      if (hiddenSelect) hiddenSelect.value = "";
+      if (inputSearch) {
+        inputSearch.value = "";
+        inputSearch.readOnly = false; // Descongelar y liberar el teclado
+      }
+      if (suggestions) suggestions.classList.add('hidden');
+      if (btnClear) btnClear.classList.add('hidden');
+      
+      showToast('Retornado a Cliente Final (Venta General)', 'info');
     }
 
     // Ocultar las sugerencias automáticamente si el usuario hace clic en otro lado de la pantalla
@@ -3334,6 +3412,7 @@ if (existeCategoria) {
         sug.classList.add('hidden');
       }
     });
+
     /* ==========================================================================
        SISTEMA DE SEGURIDAD OPERATIVA: HISTÓRICO EXCLUSIVO ADMIN Y RESET DIARIO
        ========================================================================== */
@@ -3947,7 +4026,8 @@ if (existeCategoria) {
       if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
     }
 
-    function ejecutarEliminacionTurnoPasadoDirecta(index) {
+        function ejecutarEliminacionTurnoPasadoDirecta(index) {
+      if (!AppState || !AppState.dailyClosings) return;
       const turno = AppState.dailyClosings[index];
       if (!turno) return;
       
@@ -3960,6 +4040,36 @@ if (existeCategoria) {
       if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
     }
 
+    // ==========================================================================
+    // ENLACES GLOBALES DE COMPATIBILIDAD WINDOW (CORREGIDO)
+    // ==========================================================================
+    window.auditarReabrirYModificarTurno = ejecutarAuditoriaTurnoPasadoDirecta;
+    window.eliminarTurnoHistoricoAdmin = ejecutarEliminacionTurnoPasadoDirecta;
+    if (typeof abrirModalNuevoUsuarioAdmin === 'function') window.abrirModalNuevoUsuarioAdmin = abrirModalNuevoUsuarioAdmin;
+    if (typeof cambiarClaveUsuarioAdmin === 'function') window.cambiarClaveUsuarioAdmin = cambiarClaveUsuarioAdmin;
+    if (typeof eliminarUsuarioAdmin === 'function') window.eliminarUsuarioAdmin = eliminarUsuarioAdmin;
+
+    // ==========================================================================
+    // DISPARADOR DE INICIALIZACIÓN ABSOLUTO (ANTI-CONGELAMIENTO)
+    // ==========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        initLocalStorage();
+        checkSession();
+        
+        // Ejecución en cadena con validación de existencia para poblar el TPV Ventas
+        if (typeof renderCategoryTabs === 'function') renderCategoryTabs();
+        if (typeof renderCatalog === 'function') renderCatalog();
+        if (typeof renderCartUI === 'function') renderCartUI();
+        if (typeof renderCartClientOptions === 'function') renderCartClientOptions();
+        if (typeof renderCartPaymentMethodsUI === 'function') renderCartPaymentMethodsUI();
+        if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
+        if (typeof renderAdminUsersTable === 'function') renderAdminUsersTable();
+      } catch (err) {
+        console.error("Error controlado en el ciclo de carga general DOMContentLoaded: ", err);
+      }
+    });
   </script>
 </body>
 </html>
+
