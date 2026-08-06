@@ -3219,99 +3219,10 @@ if (existeCategoria) {
         }
       }
     }, 1500);
-    // CORTAFUEGOS AUTOMÁTICO DE SEGURIDAD EXTREMA PARA CIERRE DE CAJA
-    setInterval(() => {
-      const estadoTurno = localStorage.getItem('tpv_shift_status') || AppState.shiftStatus || 'OPEN';
-      const cartelExiste = document.getElementById('tpv-lockout-overlay');
+        // ==========================================================================
+    // CORTAFUEGOS ANULADO TEMPORALMENTE PARA REPARACIÓN COMERCIAL Y ACCESO ADMIN
+    // ==========================================================================
 
-      if (estadoTurno === 'CLOSED' || estadoTurno === 'CLOSED_SHIFT') {
-        
-        // 1. Limpiar el carrito de ventas de forma forzada para que no queden saldos colgados
-        if (AppState && AppState.cart) AppState.cart = [];
-        if (typeof renderCart === 'function') renderCart();
-        if (typeof updateCartUI === 'function') updateCartUI();
-
-        // 2. Inyectar el escudo visual premium bloqueando clics y teclado
-        if (!cartelExiste) {
-          const overlay = document.createElement('div');
-          overlay.id = 'tpv-lockout-overlay';
-          // Estilo premium oscuro que tapa el 100% de la pantalla del local
-          overlay.className = 'fixed inset-0 z-[99999] bg-slate-950/98 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 select-none';
-          overlay.innerHTML = `
-            <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md w-full shadow-2xl shadow-red-950/20 flex flex-col items-center gap-4">
-              <div class="w-16 h-16 bg-red-950/60 border border-red-800 text-red-500 rounded-2xl flex items-center justify-center animate-pulse">
-                <i class="fa-solid fa-lock text-2xl"></i>
-              </div>
-              <h2 class="text-xl font-black text-white tracking-tight">TERMINAL BLOQUEADO</h2>
-              <p class="text-xs text-slate-400 leading-relaxed">La jornada o turno de caja ha sido formalmente finalizado por el Administrador. No se permiten transacciones operativas en este PC.</p>
-              <div class="w-full border-t border-slate-800 my-2"></div>
-              <button onclick="reopenShiftWithAdminPin()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
-                <i class="fa-solid fa-key"></i> REABRIR TURNO (ADMIN)
-              </button>
-            </div>
-          `;
-          document.body.appendChild(overlay);
-
-          // 3. BLOQUEO DE TECLADO Y MOUSE INTERNO COMERCIAL
-          window.tpvBloqueoTeclado = function(e) { e.preventDefault(); e.stopPropagation(); return false; };
-          window.addEventListener('keydown', window.tpvBloqueoTeclado, true);
-          window.addEventListener('keypress', window.tpvBloqueoTeclado, true);
-        }
-      } else {
-        // Si el estado es OPEN, liberamos los controles y removemos el cartel al instante
-        if (cartelExiste) {
-          cartelExiste.remove();
-          if (window.tpvBloqueoTeclado) {
-            window.removeEventListener('keydown', window.tpvBloqueoTeclado, true);
-            window.removeEventListener('keypress', window.tpvBloqueoTeclado, true);
-          }
-        }
-      }
-    }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
-
-    // CORTAFUEGOS AUTOMÁTICO DE SEGURIDAD EXTREMA PARA CIERRE DE CAJA
-    setInterval(() => {
-      const estadoTurno = localStorage.getItem('tpv_shift_status') || AppState.shiftStatus || 'OPEN';
-      const cartelExiste = document.getElementById('tpv-lockout-overlay');
-
-      if (estadoTurno === 'CLOSED') {
-        // Inyectar el escudo visual premium bloqueando clics y teclado
-        if (!cartelExiste) {
-          const overlay = document.createElement('div');
-          overlay.id = 'tpv-lockout-overlay';
-          // Estilo premium oscuro que tapa el 100% de la pantalla del local
-          overlay.className = 'fixed inset-0 z- bg-slate-950/98 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 select-none';
-          overlay.innerHTML = `
-            <div class="bg-slate-900 border border-red-900/40 rounded-3xl p-8 max-w-md w-full shadow-2xl shadow-red-950/20 flex flex-col items-center gap-4">
-              <div class="w-16 h-16 bg-red-950/60 border border-red-800 text-red-500 rounded-2xl flex items-center justify-center animate-pulse">
-                <i class="fa-solid fa-lock text-2xl"></i>
-              </div>
-              <h2 class="text-xl font-black text-white tracking-tight">TERMINAL BLOQUEADO</h2>
-              <p class="text-xs text-slate-400 leading-relaxed">La jornada o turno de caja ha sido formalmente finalizado por el Administrador. No se permiten transacciones operativas en este PC.</p>
-              <div class="w-full border-t border-slate-800 my-2"></div>
-              <button onclick="reopenShiftWithAdminPin()" class="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2">
-                <i class="fa-solid fa-key"></i> REABRIR TURNO (ADMIN)
-              </button>
-            </div>
-          `;
-          document.body.appendChild(overlay);
-
-          // BLOQUEO DE TECLADO INTERNO COMERCIAL EN LA PÁGINA
-          window.tpvBloqueoTeclado = function(e) { e.preventDefault(); e.stopPropagation(); return false; };
-          window.addEventListener('keydown', window.tpvBloqueoTeclado, true);
-          window.addEventListener('keypress', window.tpvBloqueoTeclado, true);
-        }
-      } else {
-        // Si el estado es OPEN, liberamos los controles y removemos el cartel al instante
-        if (cartelExiste) {
-          cartelExiste.remove();
-          if (window.tpvBloqueoTeclado) {
-            window.removeEventListener('keydown', window.tpvBloqueoTeclado, true);
-            window.removeEventListener('keypress', window.tpvBloqueoTeclado, true);
-          }
-        }
-      }
-    }, 1000); // Custodia el TPV cada 1 segundo en tiempo real
     /* ==========================================================================
        SISTEMA DE BUSCADOR PREDICTIVO DE CLIENTES Y EXPANSOR DE CARRITO (45%) - CORREGIDO
        ========================================================================== */
@@ -3920,40 +3831,9 @@ if (existeCategoria) {
       if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
     }
 
-    function ejecutarEliminacionTurnoPasadoDirecta(index) {
-      const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
-      const turno = listaCierres[index];
-      if (!turno) return;
-      
-      if (!confirm(`🚨 SEGURIDAD ADMIN: ¿Está seguro de eliminar permanentemente del historial el turno de "${turno.cajero || 'Cajero'}" del día ${turno.fecha}?\n\nEsta acción no se puede deshacer.`)) {
-        return;
-      }
-
-      listaCierres.splice(index, 1);
-      AppState.dailyClosings = listaCierres;
-      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
-      if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
-    }
-
-
-      // 2. VERIFICAR SI SE HIZO CLIC EN EL BOTÓN "ELIMINAR" (BASURERO)
-      const botonEliminar = e.target.closest('button[onclick*="eliminarTurnoHistoricoAdmin"]') || 
-                            e.target.closest('button[onclick*="window.eliminarTurnoHistoricoAdmin"]');
-      
-      if (botonEliminar) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        const onclickText = botonEliminar.getAttribute('onclick');
-        const match = onclickText.match(/\d+/);
-        if (match) {
-          const index = parseInt(match[0]);
-          ejecutarEliminacionTurnoPasadoDirecta(index);
-        }
-      }
-    }, true); // El 'true' obliga al navegador a priorizar este escuchador ante cualquier otro
-
-    // LÓGICA DE AUDITORÍA FLUIDA E INMUTABLE
+        // ==========================================================================
+    // CENTRAL DE AUDITORÍA: REABRIR, MODIFICAR Y ELIMINAR JORNADAS PASADAS
+    // ==========================================================================
     function ejecutarAuditoriaTurnoPasadoDirecta(index) {
       if (!AppState || !AppState.dailyClosings) {
         alert("Error: La base de datos no está disponible.");
@@ -4010,7 +3890,7 @@ if (existeCategoria) {
       if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
     }
 
-        function ejecutarEliminacionTurnoPasadoDirecta(index) {
+    function ejecutarEliminacionTurnoPasadoDirecta(index) {
       if (!AppState || !AppState.dailyClosings) return;
       const turno = AppState.dailyClosings[index];
       if (!turno) return;
@@ -4025,7 +3905,7 @@ if (existeCategoria) {
     }
 
     // ==========================================================================
-    // ENLACES GLOBALES DE COMPATIBILIDAD WINDOW (CORREGIDO)
+    // ENLACES GLOBALES DE COMPATIBILIDAD WINDOW
     // ==========================================================================
     window.auditarReabrirYModificarTurno = ejecutarAuditoriaTurnoPasadoDirecta;
     window.eliminarTurnoHistoricoAdmin = ejecutarEliminacionTurnoPasadoDirecta;
@@ -4055,5 +3935,6 @@ if (existeCategoria) {
     });
   </script>
 </body>
-</html> 
+</html>
+	
 
