@@ -1081,7 +1081,7 @@
 
       // 1. LLAVE MAESTRA DE EMERGENCIA ADMINISTRATIVA (Pase libre e inmediato para ti)
       if ((u === 'admin' && p === '9999') || (u === 'admin' && p === 'admin123')) {
-        const adminMaster = { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', canSell: true };
+        const adminMaster = { id: '1', name: 'Administrador General', username: 'admin', role: 'ADMIN', canSell: true };
         AppState.currentUser = adminMaster;
         
         // Guardar sesión de forma segura y cruzada en el motor para evitar desajustes
@@ -1103,7 +1103,7 @@
 
       // 2. LOGÍN NORMAL RESPALDADO POR LA BASE DE DATOS LOCAL
       const localUsers = JSON.parse(localStorage.getItem('tpv_users')) || [
-        { id: '1', name: 'Administrador General', username: 'admin', role: 'admin', password: '9999', canSell: true },
+        { id: '1', name: 'Administrador General', username: 'admin', role: 'ADMIN', password: '9999', canSell: true },
         { id: '2', name: 'Cajero Turno Mañana', username: 'cajero1', role: 'cajero', password: '1111', canSell: true }
       ];
 
