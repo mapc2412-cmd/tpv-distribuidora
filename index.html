@@ -3709,29 +3709,126 @@ if (existeCategoria) {
         }
       }
     }, 1200);
-    /* ==========================================================================
+        /* ==========================================================================
        ESCUCHADOR DE CLICS UNIVERSAL DE SEGURIDAD (DESTRABE DE BOTONES HISTÓRICOS)
        ========================================================================== */
 
     // Captura los clics de forma agresiva en toda la página para forzar la ejecución
     document.addEventListener('click', function(e) {
-      // 1. VERIFICAR SI SE HIZO CLIC EN EL BOTÓN "REABRIR / MODIFICAR"
+      // REGLA DE BURBUJEO: Buscamos si el elemento clickeado o cualquiera de sus padres es un botón de auditoría
       const botonModificar = e.target.closest('button[onclick*="auditarReabrirYModificarTurno"]') || 
-                             e.target.closest('button[onclick*="window.auditarReabrirYModificarTurno"]');
+                             e.target.closest('button[onclick*="window.auditarReabrirYModificarTurno"]') ||
+                             e.target.closest('.px-2.py-1.bg-slate-800.text-amber-400') ||
+                             (e.target.tagName === 'I' && e.target.parentElement.innerHTML.includes('auditarReabrirYModificarTurno'));
       
       if (botonModificar) {
         e.preventDefault();
         e.stopPropagation();
         
-        // Extraemos el número de índice directamente del texto del onclick
-        const onclickText = botonModificar.getAttribute('onclick');
-        const match = onclickText.match(/\d+/);
-        if (match) {
-          const index = parseInt(match[0]);
-          ejecutarAuditoriaTurnoPasadoDirecta(index);
+        // Extraemos el número de índice directamente del atributo onclick del botón de forma ultra-segura
+        const onclickText = botonModificar.getAttribute('onclick') || botonModificar.parentElement.getAttribute('onclick');
+        if (onclickText) {
+          const matchNum = onclickText.match(/\d+/);
+          if (matchNum) {
+            const index = parseInt(matchNum[0], 10);
+            ejecutarAuditoriaTurnoPasadoDirecta(index);
+          }
         }
         return;
       }
+
+      // CASO ELIMINAR: Buscamos si el elemento clickeado o su padre es el basurero rojo
+      const botonEliminar = e.target.closest('button[onclick*="eliminarTurnoHistoricoAdmin"]') || 
+                            e.target.closest('button[onclick*="window.eliminarTurnoHistoricoAdmin"]') ||
+                            e.target.closest('.text-red-400') ||
+                            (e.target.tagName === 'I' && e.target.classList.contains('fa-trash-can'));
+      
+      if (botonEliminar) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const onclickText = botonEliminar.getAttribute('onclick') || botonEliminar.parentElement.getAttribute('onclick');
+        if (onclickText) {
+          const matchNum = onclickText.match(/\d+/);
+          if (matchNum) {
+            const index = parseInt(matchNum[0], 10);
+            ejecutarEliminacionTurnoPasadoDirecta(index);
+          }
+        }
+      }
+    }, true); // El 'true' obliga al navegador a priorizar este escuchador ante cualquier otro candado
+
+    // LÓGICA DE AUDITORÍA FLUIDA E INMUTABLE
+    function ejecutarAuditoriaTurnoPasadoDirecta(index) {
+      const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
+      const turno = listaCierres[index];
+      
+      if (!turno) {
+        alert("No se encontraron datos para el turno seleccionado. Índice: " + index);
+        return;
+      }
+
+      const opcion = prompt(
+        `🛠️ CENTRAL DE AUDITORÍA - FECHA: ${turno.fecha}\nCajero Responsable: ${turno.cajero || 'Cajero General'}\n\nSeleccione una acción escribiendo el número (1, 2 o 3):\n\n[1] Modificar Monto Total de Ventas\n[2] Modificar Fondo de Caja Inicial\n[3] Reabrir este turno completo (Devolverlo a la pantalla de ventas activa)`
+      );
+
+      if (!opcion) return;
+
+      if (opcion === "1") {
+        const nuevoMonto = prompt(`Monto de venta actual: $${turno.totalVendido}\nIngrese el NUEVO valor real recaudado ($):`, turno.totalVendido);
+        if (nuevoMonto !== null && !isNaN(nuevoMonto)) {
+          turno.totalVendido = Math.round(parseFloat(nuevoMonto)) || 0;
+          alert("✓ Venta modificada con éxito.");
+        }
+      } 
+      else if (opcion === "2") {
+        const nuevoFondo = prompt(`Fondo de caja inicial actual: $${turno.fondoInicial || 0}\nIngrese el NUEVO monto de fondo de caja ($):`, turno.fondoInicial || 0);
+        if (nuevoFondo !== null && !isNaN(nuevoFondo)) {
+          turno.fondoInicial = parseFloat(nuevoFondo) || 0;
+          alert("✓ Fondo inicial de caja actualizado.");
+        }
+      } 
+      else if (opcion === "3") {
+        if (confirm(`⚠️ ALERTA DE REAPERTURA\n\n¿Está seguro de reabrir el turno de "${turno.cajero || 'Cajero'}" del día ${turno.fecha}?\n\nEsto devolverá la caja del local al estado abierto para que puedas anular o borrar boletas en el panel activo.`)) {
+          
+          AppState.shiftStatus = 'OPEN';
+          localStorage.setItem('tpv_shift_status', 'OPEN');
+          localStorage.setItem('tpv_last_active_date', turno.fecha);
+          
+          // Removemos el turno temporalmente del histórico consolidado para evitar duplicados
+          listaCierres.splice(index, 1);
+          AppState.dailyClosings = listaCierres;
+          localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+          
+          alert("Apertura autorizada. Diríjase a la pestaña 'Historial y Caja' para modificar las boletas del panel activo.");
+        }
+      } else {
+        alert("Opción no válida.");
+      }
+
+      // Guardar cambios y redibujar la pantalla de forma unificada
+      AppState.dailyClosings = listaCierres;
+      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+      if (typeof saveStateToLocalStorage === 'function') saveStateToLocalStorage();
+      if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
+      if (typeof renderShiftSummaryUI === 'function') renderShiftSummaryUI();
+    }
+
+    function ejecutarEliminacionTurnoPasadoDirecta(index) {
+      const listaCierres = AppState.dailyClosings || JSON.parse(localStorage.getItem('tpv_daily_closings')) || [];
+      const turno = listaCierres[index];
+      if (!turno) return;
+      
+      if (!confirm(`🚨 SEGURIDAD ADMIN: ¿Está seguro de eliminar permanentemente del historial el turno de "${turno.cajero || 'Cajero'}" del día ${turno.fecha}?\n\nEsta acción no se puede deshacer.`)) {
+        return;
+      }
+
+      listaCierres.splice(index, 1);
+      AppState.dailyClosings = listaCierres;
+      localStorage.setItem('tpv_daily_closings', JSON.stringify(AppState.dailyClosings));
+      if (typeof renderHistoricalClosingsTable === 'function') renderHistoricalClosingsTable();
+    }
+
 
       // 2. VERIFICAR SI SE HIZO CLIC EN EL BOTÓN "ELIMINAR" (BASURERO)
       const botonEliminar = e.target.closest('button[onclick*="eliminarTurnoHistoricoAdmin"]') || 
